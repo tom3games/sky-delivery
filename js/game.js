@@ -1,23 +1,23 @@
 // 空中出前 宙吊軒（1日だけ職場体験 #4）。WIRE ESCAPE のワイヤーと街を使った出前ゲーム
 // 速く飛ぶと料理が崩れて怒られる、ゆっくりだと遅れて怒られる
 import * as THREE from 'three'
-import { GAME } from '../shared/config.js?v=6'
-import { createWorld } from '../shared/track.js?v=6'
-import { buildScene } from './scene.js?v=6'
-import { FX } from './fx.js?v=6'
-import { loadSky, setAniso } from './look.js?v=6'
-import { Q } from './quality.js?v=6'
-import { RunnerModel } from './runnermodel.js?v=6'
-import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=6'
-import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js?v=6'
-import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=6'
-import { createBot, botInput } from '../shared/bot.js?v=6'
-import { drawPayslip, totals } from './payslip.js?v=6'
-import { createStreet, buildPoles } from '../shared/street.js?v=6'
-import { addTown, clearShopFront } from '../shared/town.js?v=6'
-import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=6'
-import { carLights } from './carmodel.js?v=6'
-import { LOW } from './quality.js?v=6'
+import { GAME } from '../shared/config.js?v=7'
+import { createWorld } from '../shared/track.js?v=7'
+import { buildScene } from './scene.js?v=7'
+import { FX } from './fx.js?v=7'
+import { loadSky, setAniso } from './look.js?v=7'
+import { Q } from './quality.js?v=7'
+import { RunnerModel } from './runnermodel.js?v=7'
+import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=7'
+import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js?v=7'
+import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=7'
+import { createBot, botInput } from '../shared/bot.js?v=7'
+import { drawPayslip, totals } from './payslip.js?v=7'
+import { createStreet, buildPoles } from '../shared/street.js?v=7'
+import { addTown, clearShopFront } from '../shared/town.js?v=7'
+import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=7'
+import { carLights } from './carmodel.js?v=7'
+import { LOW } from './quality.js?v=7'
 
 const $ = id => document.getElementById(id)
 const STEP = GAME.step
@@ -33,7 +33,7 @@ const T = {
     howItems: [
       'ビルを<b>タッチ</b>でワイヤー。大きいボタンなら前の上へ自動で',
       '店の前の<b>手前の輪</b>は近場、<b>奥の輪</b>は遠方。遠いほど高い',
-      '急ぐほど<b>丼の中身が減る</b>。遅れても怒られる',
+      '急ぐほど<b>丼の中身が減る</b>。地面を走ると<b>麺がのびる</b>',
       '4分のあいだ注文は途切れない。<b>稼げるだけ稼ぐ</b>'
     ],
     hintWire: '<small>こつ</small>ビルをタッチするとワイヤーが出る', hintWirePc: '<small>こつ</small>ビルをクリック（か E）でワイヤー',
@@ -48,7 +48,7 @@ const T = {
     floor: (p, f) => `${p}（${f}階の窓）`, dist: d => `あと${d}m`, sec: s => `${s}秒`, late: s => `${s}秒遅れ`,
     pause: '休憩', paused: '休憩中', resume: '戻る', quit: '店を出る（やめる）',
     jump: '跳ぶ', throw: '投げる', tooFar: '届かない', bumpPed: '<small>通行人</small>ちょっと！ 前見て！', bumpCar: '<small>運転手</small>危ないやろ！ 歩道歩け！',
-    spill: { 25: 'スープが揺れてる', 50: '半分こぼれた', 75: 'ほとんど残ってない' },
+    spill: { 25: 'スープが揺れてる', 50: '半分こぼれた', 75: 'ほとんど残ってない' }, soggy: { 8: '麺がのびてきた', 16: '麺がのびのび' },
     pickup: (d, p, f) => `はい次、${d}。${p}の${f}階や`,
     pickupFar: (z) => `${z}や。気張って行け`,
     custPick: { duf: 'デュフ…デュフフ…デュフ', polite: 'お忙しいところ誠に恐れ入ります。どうか、お気をつけて', coins: '小銭しかないけど、ええかな？', photo: '映えるように持ってきてな。崩したらあかんで', net: '網で取るから、窓の近くまででええよ' },
@@ -78,7 +78,7 @@ const T = {
     howItems: [
       '<b>Tap</b> a building to shoot a wire. The big button aims ahead for you',
       'At the shop, the <b>front ring</b> is a near order, the <b>back ring</b> a far one. Far pays more',
-      'The faster you go, <b>the more soup you lose</b>. Late is bad too',
+      'Rush and <b>the soup spills</b>. Run on the ground and <b>the noodles go soggy</b>',
       'Orders never stop for 4 minutes. <b>Earn as much as you can</b>'
     ],
     hintWire: '<small>Tip</small>Tap a building to shoot a wire', hintWirePc: '<small>Tip</small>Click a building (or E) to wire',
@@ -93,7 +93,7 @@ const T = {
     floor: (p, f) => `${p} (floor ${f} window)`, dist: d => `${d} m`, sec: s => `${s}s`, late: s => `${s}s late`,
     pause: 'Break', paused: 'On break', resume: 'Back to work', quit: 'Leave (quit)',
     jump: 'Jump', throw: 'Throw', tooFar: 'Too far', bumpPed: '<small>Passer-by</small>Hey! Watch it!', bumpCar: '<small>Driver</small>Get off the road!',
-    spill: { 25: 'Soup is sloshing', 50: 'Half of it is gone', 75: 'Almost nothing left' },
+    spill: { 25: 'Soup is sloshing', 50: 'Half of it is gone', 75: 'Almost nothing left' }, soggy: { 8: 'Noodles getting soggy', 16: 'Soggy noodles' },
     pickup: (d, p) => `Next: ${d} for the ${p}`,
     pickupFar: (z) => `That one is ${z}. Go!`,
     custPick: { duf: 'Doo-fu... doo-fufu... doo-fu', polite: 'I am terribly sorry to trouble you. Please, please be careful', coins: 'I only have coins. Is that okay?', photo: 'Make it look good. Do not spill a drop', net: 'I will catch it with a net. Just come near the window' },
@@ -538,7 +538,8 @@ function onShiftEvent(e) {
     sfx('slosh', { vol: 0.5 + e.level / 200 }); if (e.level >= 50) sfx('dish', { vol: 0.6 })
     bowlWord(t('spill')[e.level]); const b = $('bowl'); b.classList.remove('tilt'); void b.offsetWidth; b.classList.add('tilt')
     const m = model.group.position; fx.debrisAt(m.x, m.y + 0.9, m.z, 6, 0xc9862f, { speed: 3, up: 2, size: 0.08 })
-  } else if (e.t === 'tooFast') say(t('tooFast'), 1.2)
+  } else if (e.t === 'soggy') { bowlWord(t('soggy')[e.level]); sfx('tick', { vol: 0.5 }) }
+  else if (e.t === 'tooFast') say(t('tooFast'), 1.2)
   else if (e.t === 'late') { sfx('tick', { vol: 0.7 }); say(t('lateMsg'), 1.2) }
   else if (e.t === 'throw') sfx('throw')
   else if (e.t === 'drop') { sfx('crash', { vol: 0.9 }); sfx('dish'); fx.debrisAt(e.x, 0.5, e.z, 14, 0xc9ced3, { speed: 6, up: 5, size: 0.15 }) }
@@ -561,7 +562,7 @@ function onShiftEvent(e) {
 // 受け取った時の反応の種類: good / ok / mess / late（1件目は練習なので怒る台詞は出さない）
 function reactKind(e) {
   const angryMess = e.cust === 'photo' ? 55 : JOB.angryMess
-  let k = e.mess >= angryMess ? 'mess' : e.late >= JOB.angryLate ? 'late' : e.mess < 25 && e.late === 0 ? 'good' : 'ok'
+  let k = e.mess >= angryMess ? 'mess' : e.late >= JOB.angryLate || e.soggy >= JOB.angrySoggy ? 'late' : e.mess < 25 && e.late === 0 ? 'good' : 'ok'
   if (e.practice && (k === 'mess' || k === 'late')) k = 'ok'
   return k
 }
@@ -584,7 +585,7 @@ function showResult() {
   const p = payData(sh, lang), d = { lang, no: 4, job: t('job'), date: (d0 => `${d0.getFullYear()}.${String(d0.getMonth() + 1).padStart(2, '0')}.${String(d0.getDate()).padStart(2, '0')}`)(new Date()), wage: JOB.wage, hours: JOB.hours, pay: p.pay, ded: p.ded, boss: t('boss') }
   const net = totals(d).net
   const C = t('comments'), R = sh.results
-  const messy = R.filter(r => r.reason === 'mess').length, late = R.filter(r => r.reason === 'late').length
+  const messy = R.filter(r => r.reason === 'mess').length, late = R.filter(r => r.reason === 'late' || r.reason === 'soggy').length
   const jackpot = R.some(r => r.style === 'jackpot')
   d.comment = p.drops ? C.drop : p.ok <= 1 ? C.few : p.undone && p.ok < 4 ? C.hand : jackpot ? C.duf : messy > late && messy ? C.mess : late ? C.late : net >= RANK[0] && !p.claims ? C.great : p.far >= 2 ? C.far : p.undone ? C.hand : C.ok
   const st = t('stamps'); d.stamp = net >= RANK[0] ? st[3] : net >= RANK[1] ? st[2] : net >= RANK[2] ? st[1] : st[0]
@@ -598,7 +599,7 @@ function showResult() {
     if (!r) return { no: i + 1, text, note: ja ? '持ったまま時間切れ' : 'time ran out', bad: true }
     const how = r.how === 'drop' ? (ja ? '落とした' : 'dropped') : r.how === 'throw' ? (ja ? '投げ入れ' : 'thrown in') : (ja ? '手渡し' : 'handed')
     const tipN = r.cust === 'duf' ? (ja ? `デュフフ ${r.tip.toLocaleString()}円` : `doo-fu ¥${r.tip.toLocaleString()}`) : r.cust === 'coins' ? (ja ? `1円玉${r.tip - (r.early || 0)}枚` : `${r.tip - (r.early || 0)} coins`) : (ja ? `チップ${r.tip}円` : `tip ¥${r.tip}`)
-    const note = r.how === 'drop' ? how : r.reason === 'mess' ? (ja ? `${how}・こぼれすぎ` : `${how}, spilled`) : r.reason === 'late' ? (ja ? `${how}・${r.late}秒遅れ` : `${how}, ${r.late}s late`) : r.tip ? tipN : how
+    const note = r.how === 'drop' ? how : r.reason === 'mess' ? (ja ? `${how}・こぼれすぎ` : `${how}, spilled`) : r.reason === 'late' ? (ja ? `${how}・${r.late}秒遅れ` : `${how}, ${r.late}s late`) : r.reason === 'soggy' ? (ja ? `${how}・のびのび` : `${how}, soggy`) : r.tip ? tipN : how
     return { no: i + 1, text, note, bad: r.angry }
   })
   d.log = rows; d.logMore = n => ja ? `ほか ${n}件` : `${n} more`   // 入りきらない分は payslip.js が上にまとめる

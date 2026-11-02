@@ -172,19 +172,20 @@ await t('客の種類: デュフフの人はたまに（4〜10%）、ほか5種�
   const p = k => (c[k] || 0) / 4000
   expect(p('duf') > 0.04 && p('duf') < 0.1 && ['polite', 'coins', 'photo', 'net'].every(k => p(k) > 0.07) && p('normal') > 0.4 && firsts, JSON.stringify({ c, firsts })); return { duf: +(p('duf') * 100).toFixed(1) + '%', ...c }
 })
-await t('客ごとの払い方と怒り方: デュフフは怒らず 2222/222/22円、小銭は端数・怒っても1円、撮る人は崩れ55で怒り・きれいなら1.6倍、丁寧な人は遅れで怒らない、網の人は10m先から受け取る', () => {
+await t('客ごとの払い方と怒り方（地上で運ぶと麺がのびてチップが減り、18秒で怒る）: デュフフは怒らず 2222/222/22円、小銭は端数・怒っても1円、撮る人は崩れ55で怒り・きれいなら1.6倍、丁寧な人は遅れで怒らない、網の人は10m先から受け取る', () => {
   const o = c => ({ cust: c, tipMax: 500, limit: 30, v: 0.5 })
   const r = {
     dufGood: settle(o('duf'), 10, 0, 'hand', false), dufOk: settle(o('duf'), 40, 2, 'hand', false), dufBad: settle(o('duf'), 95, 20, 'hand', false),
     coins: settle(o('coins'), 30, 0, 'hand', false), coinsAngry: settle(o('coins'), 90, 0, 'hand', false),
     photoClean: settle(o('photo'), 10, 0, 'hand', false), photoNormal: settle(o('normal'), 10, 0, 'hand', false), photo60: settle(o('photo'), 60, 0, 'hand', false),
-    politeLate: settle(o('polite'), 10, 40, 'hand', false), normalLate: settle(o('normal'), 10, 40, 'hand', false)
+    politeLate: settle(o('polite'), 10, 40, 'hand', false), normalLate: settle(o('normal'), 10, 40, 'hand', false),
+    soggy10: settle(o('normal'), 0, 0, 'hand', false, 10), soggy20: settle(o('normal'), 0, 0, 'hand', false, 20), politeSoggy: settle(o('polite'), 0, 0, 'hand', false, 20)
   }
   const rnd = mulberry(1); let net = null; for (let i = 0; i < 300 && !net; i++) { const q = makeOrder(world, rnd, 'near'); if (q.cust === 'net') net = q }
   const ok = r.dufGood.tip === 2222 && !r.dufGood.angry && r.dufGood.style === 'jackpot' && r.dufOk.tip === 222 && r.dufBad.tip === 22 && !r.dufBad.angry
     && r.coins.tip % 10 !== 0 && r.coinsAngry.angry && r.coinsAngry.tip === 1
     && r.photoClean.tip === Math.round(r.photoNormal.tip * 1.6) && r.photo60.angry && !settle(o('normal'), 60, 0, 'hand', false).angry
-    && !r.politeLate.angry && r.normalLate.angry && net && net.handR === JOB.netR && JOB.netR >= 10
+    && !r.politeLate.angry && r.normalLate.angry && r.soggy10.tip === 500 - (10 - JOB.soggyFree) * JOB.soggyK && !r.soggy10.angry && r.soggy20.angry && r.soggy20.reason === 'soggy' && !r.politeSoggy.angry && net && net.handR === JOB.netR && JOB.netR >= 10
   expect(ok, JSON.stringify(r)); return { duf: [2222, 222, 22], coins: r.coins.tip, photo: r.photoClean.tip }
 })
 await t('網の人には窓から8m・少し速くても渡せる。普通の客は8mでは渡せない', () => {
@@ -217,15 +218,16 @@ await t('崩れ: 速く飛ぶ・強い着地は崩れる、ゆっくり歩くの
   const land = sh.mess - fly
   expect(walk === 0 && fly > 1 && land > 10, JSON.stringify({ walk, fly, land })); return { walk, fly: +fly.toFixed(1), land: +land.toFixed(1) }
 })
-await t('bot（16日ずつ）: 初めての人（下手・歩き）も平均3件以上で5,000円超え／上手い人は近場だけ・遠方だけ・混ぜるのどれでも歩きより稼ぐ／近場だけと遠方だけの差は±25%以内（どっちを選んでも遊べる）', () => {
+await t('bot（16日ずつ）: 下手な人も平均3件以上で5,000円超え／歩くだけは下手な人の7割以下・上手い人の半分以下（地面は不利）／上手い人は遠方だけが近場だけより少し多い／下手な人が遠方を選んでも大損しない', () => {
   const run = (env = {}) => execFileSync(process.execPath, ['tools/sim.mjs', '16', ...(env.k ? [env.k] : [])], { cwd: ROOT, encoding: 'utf8', timeout: 900000, env: { ...process.env, ...(env.pref ? { PREF: env.pref } : {}) } })
-  const out = run(), outN = run({ k: 'skilled', pref: 'near' }), outF = run({ k: 'skilled', pref: 'far' })
+  const out = run(), outN = run({ k: 'skilled', pref: 'near' }), outF = run({ k: 'skilled', pref: 'far' }), outCF = run({ k: 'clumsy', pref: 'far' })
   const avg = (o, k) => +o.match(new RegExp(k + '\\s+平均 (\\d+)'))[1]
   const done = (o, k) => +o.match(new RegExp(k + '\\s+平均.*?届けた 平均([\\d.]+)件'))[1]
-  const r = { careful: avg(out, 'careful'), clumsy: avg(out, 'clumsy'), skilled: avg(out, 'skilled'), rush: avg(out, 'rush'), nearOnly: avg(outN, 'skilled'), farOnly: avg(outF, 'skilled'), clumsyDone: done(out, 'clumsy') }
-  expect(r.clumsyDone >= 3 && r.clumsy > 5000 && r.careful > 5000, '初めての人が稼げない ' + JSON.stringify(r))
-  expect([r.skilled, r.nearOnly, r.farOnly].every(v => v > r.careful * 1.25), '上手い人が歩きと変わらない ' + JSON.stringify(r))
-  expect(Math.abs(r.nearOnly - r.farOnly) / Math.max(r.nearOnly, r.farOnly) < 0.25, '近場か遠方の片方だけが強い ' + JSON.stringify(r))
+  const r = { careful: avg(out, 'careful'), clumsy: avg(out, 'clumsy'), skilled: avg(out, 'skilled'), rush: avg(out, 'rush'), nearOnly: avg(outN, 'skilled'), farOnly: avg(outF, 'skilled'), clumsyFar: avg(outCF, 'clumsy'), clumsyDone: done(out, 'clumsy') }
+  expect(r.clumsyDone >= 3 && r.clumsy > 5000, '初めての人が稼げない ' + JSON.stringify(r))
+  expect(r.careful <= r.clumsy * 0.7 && r.careful <= Math.min(r.skilled, r.nearOnly, r.farOnly) * 0.5, '歩くだけが強すぎる ' + JSON.stringify(r))
+  expect(r.farOnly > r.nearOnly && r.farOnly < r.nearOnly * 1.25, '遠方だけが近場だけより少し多い、になっていない ' + JSON.stringify(r))
+  expect(r.clumsyFar > r.clumsy * 0.85, '下手な人が遠方を選ぶと大損 ' + JSON.stringify(r))
   return r
 })
 await t('AI臭さチェック NG 0', () => {

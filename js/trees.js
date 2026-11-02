@@ -2,8 +2,8 @@
 // 2026-11-02 外部レビュー「都心の歩道に杉が1本だけ立っている」で杉から変えた。
 // 全部を InstancedMesh 2つで描く（何千本でも描画は2回）。
 import * as THREE from 'three'
-import { tex } from './look.js?v=6'
-import { Q } from './quality.js?v=6'
+import { tex } from './look.js?v=7'
+import { Q } from './quality.js?v=7'
 
 // 葉の絵: 下から上へ、垂れた枝の房を重ねて細長い円錐の樹冠を描く
 function crownTexture() {

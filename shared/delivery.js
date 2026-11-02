@@ -1,4 +1,4 @@
-import { addTown } from './town.js?v=6'
+import { addTown } from './town.js?v=7'
 // 空中出前の仕事の中身（注文・崩れ・遅れ・受け渡し・投げ入れ・お金）。three.js に依存しない。画面と bot で同じものが動く
 // 固定ステップで stepShift を呼ぶ。runner（shared/runner.js）の状態を読むだけで、動きには触らない（投げた料理だけ自分で飛ばす）
 
@@ -20,6 +20,10 @@ export const JOB = {
   bonk: 10,               // 壁にぶつかった
   pedHit: 7, carHit: 10,  // 通行人・車にぶつかった
   climbK: 0.4,            // 壁を這っている間（毎秒）
+  // 地上で運んだ時間だけ麺がのびる（2026-11-03 本人のワイヤー系の決まり「地面は不利に」。歩くだけが下手な飛び方と同じ稼ぎだった）
+  soggyFree: 4,           // 着地して壁まで走る程度は見逃す（秒）
+  soggyK: 30,             // それを超えた1秒ごとにチップから引く（円）
+  angrySoggy: 18,         // 地上でこれだけ運ぶと「のびのび」で怒る（丁寧すぎる人・デュフフの人は怒らない）
   runFree: 6, runK: 0.45,  // 地面を走ると岡持ちが揺れる。6m/s を超えた分 ×これ（毎秒）
   // 受け渡し
   handR: 5,               // 届け先にこの距離まで寄れば手渡し
@@ -31,10 +35,10 @@ export const JOB = {
   farGrace: 10,           // 遠方は時間に余裕を足す
   firstGrace: 10,         // 1件目は操作に慣れる分だけ長め。さらに1件目は崩れても遅れても怒られない（練習）
   // お金（歩合が中心。遠いほど代金もチップも高い）
-  wage: 500, hours: 3,    // 基本給（3時間の体験という設定）
+  wage: 400, hours: 3,    // 基本給（3時間の体験という設定）
   feeBase: 200, feePerM: 2.5,    // 配達手当 = 200円 + 2.5円/m（150mで580円、450mで1,330円）
   tipBase: 300, tipPerM: 1,      // チップの上限 = 300円 + 1円/m（崩れ0・間に合えば満額）
-  farBonus: 1200,          // 遠方手当（1件ごと。遠い注文を選ぶ理由）
+  farBonus: 1800,          // 遠方手当（1件ごと。遠い注文を選ぶ理由）
   lateK: 30,              // 遅れ1秒ごとにチップから引く
   earlySec: 4, early: 150,
   angryMess: 80, angryLate: 15, claim: 300,
@@ -155,28 +159,29 @@ export function createShift(world, seed = 1) {
 export const curOrder = sh => sh.cur
 
 // 客ごとのチップと怒り方
-export function settle(o, mess, late, how, practice) {
+export function settle(o, mess, late, how, practice, soggy = 0) {
   const c = o.cust
   const angryMess = c === 'photo' ? 55 : JOB.angryMess
   const angryLate = c === 'polite' ? Infinity : JOB.angryLate
-  let angry = how === 'drop' || (!practice && (mess >= angryMess || late >= angryLate))
+  const angrySoggy = c === 'polite' ? Infinity : JOB.angrySoggy, sog = Math.max(0, soggy - JOB.soggyFree)
+  let angry = how === 'drop' || (!practice && (mess >= angryMess || late >= angryLate || soggy >= angrySoggy))
   if (c === 'duf' && how !== 'drop') angry = false   // 怒らない（クレームも言わない）
-  let tip = how === 'drop' ? 0 : Math.max(0, Math.round(o.tipMax * (1 - mess / 100) - (practice ? 0 : late * JOB.lateK)))
+  let tip = how === 'drop' ? 0 : Math.max(0, Math.round(o.tipMax * (1 - mess / 100) - (practice ? 0 : late * JOB.lateK + sog * JOB.soggyK)))
   let style = ''
   if (c === 'photo' && !angry && mess < 20) { tip = Math.round(tip * 1.6); style = 'bae' }
   if (c === 'coins') { tip = angry ? 1 : Math.max(1, tip - (tip % 10) + 1 + Math.floor(o.v * 9)); style = 'coins' }   // 1円玉で払う（怒っても1枚だけ置いていく）
-  if (c === 'duf') { const good = mess < 25 && late === 0; tip = mess >= JOB.angryMess || late >= JOB.angryLate ? 22 : good ? 2222 : 222; style = good ? 'jackpot' : '' }
+  if (c === 'duf') { const good = mess < 25 && late === 0 && sog === 0; tip = mess >= JOB.angryMess || late >= JOB.angryLate || soggy >= JOB.angrySoggy ? 22 : good && sog === 0 ? 2222 : 222; style = good ? 'jackpot' : '' }
   if (angry && c !== 'coins') tip = 0
-  const reason = how === 'drop' ? 'drop' : !angry ? '' : mess >= angryMess ? 'mess' : late >= angryLate ? 'late' : ''
+  const reason = how === 'drop' ? 'drop' : !angry ? '' : mess >= angryMess ? 'mess' : late >= angryLate ? 'late' : soggy >= angrySoggy ? 'soggy' : ''
   return { angry, tip, reason, style }
 }
 
 function finish(sh, how) {
   const o = curOrder(sh), late = Math.max(0, sh.held - sh.limit)
   const practice = sh.idx === 0   // 1件目は練習: 崩れ・遅れでは怒られない（落とすのだけはだめ）
-  const s = settle(o, sh.mess, late, how, practice)
+  const s = settle(o, sh.mess, late, how, practice, sh.soggy || 0)
   const early = how !== 'drop' && !s.angry && o.cust !== 'duf' && sh.limit - sh.held >= JOB.earlySec ? JOB.early : 0   // デュフフの人はきっかり 2,222円
-  const r = { idx: sh.idx, dish: o.dish.id, how, mess: Math.round(sh.mess), late: +late.toFixed(1), held: +sh.held.toFixed(1), limit: +sh.limit.toFixed(1), tip: s.tip + early, early, fee: how === 'drop' ? 0 : o.fee, bonus: how === 'drop' ? 0 : o.bonus, angry: s.angry, reason: s.reason, style: s.style, practice, cust: o.cust, tier: o.tier, dist: Math.round(o.dist) }
+  const r = { idx: sh.idx, dish: o.dish.id, how, mess: Math.round(sh.mess), late: +late.toFixed(1), held: +sh.held.toFixed(1), limit: +sh.limit.toFixed(1), tip: s.tip + early, early, fee: how === 'drop' ? 0 : o.fee, bonus: how === 'drop' ? 0 : o.bonus, angry: s.angry, reason: s.reason, style: s.style, practice, soggy: +(sh.soggy || 0).toFixed(1), cust: o.cust, tier: o.tier, dist: Math.round(o.dist) }
   sh.results.push(r)
   sh.events.push({ t: 'deliver', ...r, x: o.x, y: o.y, z: o.z })
   sh.carrying = false; sh.mess = 0; sh.held = 0; sh.thrown = null; sh.idx++; sh.near = false
@@ -195,7 +200,7 @@ export function stepShift(sh, r, dt, { throwNow = false } = {}) {
       const P = JOB.pick[tier]
       if (Math.hypot(r.x - P.x, r.z - P.z) < P.r) {
         const o = sh.offers[tier]
-        sh.cur = o; sh.targets.push(o); sh.carrying = true; sh.mess = 0; sh.held = 0; sh.warned = false; sh.near = false
+        sh.cur = o; sh.targets.push(o); sh.carrying = true; sh.mess = 0; sh.held = 0; sh.warned = false; sh.near = false; sh.soggy = 0
         sh.limit = o.limit + (sh.idx === 0 ? JOB.firstGrace : 0)
         sh.offers = null
         sh.events.push({ t: 'pickup', idx: sh.idx, tier, limit: sh.limit, cust: o.cust })
@@ -217,6 +222,8 @@ export function stepShift(sh, r, dt, { throwNow = false } = {}) {
       if (ah > JOB.accelFree && ah < 400) { const k = (ah - JOB.accelFree) * JOB.accelK * dt; add += k; S0.accel += k }
     }
     if (r.climbing && Math.hypot(r.vx, r.vy, r.vz) > 2.5) { add += JOB.climbK * dt; S0.climb += JOB.climbK * dt }   // 動いている時だけ
+    if (r.grounded) { sh.groundT = (sh.groundT || 0) + dt; const s0 = sh.soggy || 0; sh.soggy = s0 + dt; for (const th of [8, 16]) if (s0 < th && sh.soggy >= th) sh.events.push({ t: 'soggy', level: th }) }
+    sh.carryT = (sh.carryT || 0) + dt
     if (r.grounded) { const vg = Math.hypot(r.vx, r.vz); if (vg > JOB.runFree) { const k = (vg - JOB.runFree) * JOB.runK * dt; add += k; S0.run += k } }
     for (const e of r.events) {
       if (e.t === 'land' && e.impact > JOB.landFree) { const k = (e.impact - JOB.landFree) * JOB.landK; add += k; S0.land += k }

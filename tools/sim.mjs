@@ -23,16 +23,17 @@ export function play(kind, seed, verbose = false) {
     sh.events.length = 0
     maxMess = Math.max(maxMess, sh.mess)
   }
-  return { far: sh.results.filter(r => r.tier === 'far' && r.how !== 'drop').length, angry: sh.results.filter(r => r.angry).length, dists: sh.targets.map(t => t.dist), money: money(sh), done: sh.results.filter(r => r.how !== 'drop').length, res: sh.results, p: payData(sh), src: sh.src }
+  return { gr: (sh.groundT || 0) / Math.max(1, sh.carryT || 1), far: sh.results.filter(r => r.tier === 'far' && r.how !== 'drop').length, angry: sh.results.filter(r => r.angry).length, dists: sh.targets.map(t => t.dist), money: money(sh), done: sh.results.filter(r => r.how !== 'drop').length, res: sh.results, p: payData(sh), src: sh.src }
 }
 const kinds = only ? [only] : ['careful', 'rush', 'skilled', 'clumsy']
 for (const k of kinds) {
   const ms = [], det = [], srcSum = {}, held = [], dn = [], dist = [], fr = [], an = []
-  for (let s = 1; s <= N; s++) { const g = play(k, s, N === 1); ms.push(g.money); dn.push(g.done); fr.push(g.far); an.push(g.angry); for (const r of g.res) if (r.how !== 'drop') { held.push(r.held); dist.push(g.dists[r.idx]) } for (const [a, b] of Object.entries(g.src)) srcSum[a] = (srcSum[a] || 0) + b; det.push(`${g.done}件 崩${g.res.map(r => r.mess).join('/')} 遅${g.res.map(r => r.late).join('/')} ${g.res.map(r => r.how[0]).join('')}`) }
+  for (let s = 1; s <= N; s++) { const g = play(k, s, N === 1); ms.push(g.money); dn.push(g.done); fr.push(g.far); (globalThis.GR ||= {})[k] = ((globalThis.GR[k] || 0) + g.gr / N); an.push(g.angry); for (const r of g.res) if (r.how !== 'drop') { held.push(r.held); dist.push(g.dists[r.idx]) } for (const [a, b] of Object.entries(g.src)) srcSum[a] = (srcSum[a] || 0) + b; det.push(`${g.done}件 崩${g.res.map(r => r.mess).join('/')} 遅${g.res.map(r => r.late).join('/')} ${g.res.map(r => r.how[0]).join('')}`) }
   ms.sort((a, b) => a - b)
   if (process.env.SRC) console.log(k, JSON.stringify(Object.fromEntries(Object.entries(srcSum).map(([a, b]) => [a, Math.round(b / N)]))))
   const avg = Math.round(ms.reduce((a, b) => a + b, 0) / ms.length)
   const mps = dist.reduce((a, b) => a + b, 0) / Math.max(1, held.reduce((a, b) => a + b, 0))
   console.log(`${k.padEnd(8)} 平均 ${avg}円  中央 ${ms[ms.length >> 1]}  最小 ${ms[0]}  最大 ${ms[ms.length - 1]}  届けた 平均${(dn.reduce((a, b) => a + b, 0) / N).toFixed(1)}件 最少${Math.min(...dn)}件 遠方${(fr.reduce((a, b) => a + b, 0) / N).toFixed(1)} 怒${(an.reduce((a, b) => a + b, 0) / N).toFixed(1)}  受け取りから手渡しまで 平均${(held.reduce((a, b) => a + b, 0) / Math.max(1, held.length)).toFixed(1)}秒（直線距離で ${mps.toFixed(1)}m/秒）`)
+  console.log('   地上で運んだ割合', (globalThis.GR[k] * 100).toFixed(0) + '%')
   if (process.env.V) det.forEach((d, i) => console.log('   ', i + 1, d))
 }

@@ -1,7 +1,7 @@
 // 通りの賑わい: 電柱と街灯（ワイヤーを掛けられる）・一般車・通行人。three.js に依存しない（画面と bot で同じものが動く）
 // 2026-11-02 本人「ワイヤーをもっと使わせたいから、なるべく地面にいたらダメみたいに。車と通行人を。ぶつかったらちょっとこぼれる。
 //   電柱とか、ワイヤーを引っ掛けられる場所を増やして」
-import { createTraffic, setTrafficSpeed } from './traffic.js?v=6'
+import { createTraffic, setTrafficSpeed } from './traffic.js?v=7'
 
 export const STREET = {
   poleGap: 26,          // 電柱・街灯の間隔（m）
