@@ -43,11 +43,11 @@ function crownGeometry() {
     const P = [[-0.5, 0], [0.5, 0], [0.5, 1], [-0.5, 1]]
     for (const [u, v] of P) {
       pos.push(u * c, v, u * s)
-      const n = new THREE.Vector3(u * c, 0.55, u * s).normalize()
+      const n = new THREE.Vector3(u * c * 0.35, 1, u * s * 0.35).normalize()   // ほぼ上向き。表裏とも同じ法線にして片側だけ真っ黒になるのを防ぐ
       nor.push(n.x, n.y, n.z)
       uv.push(u + 0.5, v)
     }
-    idx.push(base, base + 1, base + 2, base, base + 2, base + 3)
+    idx.push(base, base + 1, base + 2, base, base + 2, base + 3, base, base + 2, base + 1, base, base + 3, base + 2)   // 裏面は巻き順を逆にした面を足す（DoubleSide だと裏の法線が反転して暗くなる）
   }
   const g = new THREE.BufferGeometry()
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
@@ -63,7 +63,7 @@ export function buildForest(scene, spots) {
   const trunkGeo = new THREE.CylinderGeometry(0.16, 0.34, 1, 7, 1, true).translate(0, 0.5, 0)
   const bark = new THREE.TextureLoader().load(`assets/${Q.tex}/japanese_cedar_bark_diff.webp`); bark.colorSpace = THREE.SRGBColorSpace; bark.wrapS = bark.wrapT = THREE.RepeatWrapping; bark.repeat.set(1, 6)
   const trunkMat = new THREE.MeshStandardMaterial({ map: bark, roughness: 0.95, color: 0xb8a898 })
-  const crownMat = new THREE.MeshStandardMaterial({ map: crownTexture(), alphaTest: 0.45, alphaToCoverage: Q.msaa > 0, side: THREE.DoubleSide, roughness: 0.9, metalness: 0 })
+  const crownMat = new THREE.MeshStandardMaterial({ map: crownTexture(), alphaTest: 0.45, alphaToCoverage: Q.msaa > 0, side: THREE.FrontSide, roughness: 0.9, metalness: 0 })
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, n)
   const crowns = new THREE.InstancedMesh(crownGeometry(), crownMat, n)
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3()
@@ -141,7 +141,7 @@ export function buildTufts(scene, spots) {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3))
   geo.setIndex(idx)
-  const mat = new THREE.MeshStandardMaterial({ map: grassTexture(), alphaTest: 0.4, alphaToCoverage: Q.msaa > 0, side: THREE.DoubleSide, roughness: 1 })
+  const mat = new THREE.MeshStandardMaterial({ map: grassTexture(), alphaTest: 0.4, alphaToCoverage: Q.msaa > 0, side: THREE.FrontSide, roughness: 1 })
   const im = new THREE.InstancedMesh(geo, mat, spots.length)
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3()
   spots.forEach((t, i) => {
