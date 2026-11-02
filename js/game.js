@@ -1,34 +1,36 @@
 // 空中出前 宙吊軒（1日だけ職場体験 #4）。WIRE ESCAPE のワイヤーと街を使った出前ゲーム
 // 速く飛ぶと料理が崩れて怒られる、ゆっくりだと遅れて怒られる
 import * as THREE from 'three'
-import { GAME } from '../shared/config.js?v=9'
-import { createWorld } from '../shared/track.js?v=9'
-import { buildScene } from './scene.js?v=9'
-import { FX } from './fx.js?v=9'
-import { loadSky, setAniso } from './look.js?v=9'
-import { Q } from './quality.js?v=9'
-import { RunnerModel } from './runnermodel.js?v=9'
-import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=9'
-import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js?v=9'
-import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=9'
-import { createBot, botInput } from '../shared/bot.js?v=9'
-import { drawPayslip, totals } from './payslip.js?v=9'
-import { createStreet, buildPoles } from '../shared/street.js?v=9'
-import { addTown, clearShopFront } from '../shared/town.js?v=9'
-import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=9'
-import { carLights } from './carmodel.js?v=9'
-import { LOW } from './quality.js?v=9'
-import { createAir, stepAir } from '../shared/air.js?v=9'
-import { airPool } from './air3d.js?v=9'
+import { GAME } from '../shared/config.js?v=10'
+import { createWorld } from '../shared/track.js?v=10'
+import { buildScene } from './scene.js?v=10'
+import { FX } from './fx.js?v=10'
+import { loadSky, setAniso } from './look.js?v=10'
+import { Q } from './quality.js?v=10'
+import { RunnerModel } from './runnermodel.js?v=10'
+import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=10'
+import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js?v=10'
+import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=10'
+import { createBot, botInput } from '../shared/bot.js?v=10'
+import { drawPayslip, totals } from './payslip.js?v=10'
+import { createStreet, buildPoles } from '../shared/street.js?v=10'
+import { addTown, clearShopFront } from '../shared/town.js?v=10'
+import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=10'
+import { carLights } from './carmodel.js?v=10'
+import { LOW } from './quality.js?v=10'
+import { createAir, stepAir } from '../shared/air.js?v=10'
+import { airPool } from './air3d.js?v=10'
 
 const $ = id => document.getElementById(id)
 // ---------------------------------------------------------------- 読み込みの進み具合（ロード画面）
 const LM = THREE.DefaultLoadingManager, bootP = { done: 0, total: 0 }
-LM.onStart = LM.onProgress = (url, a, b) => { bootP.done = a; bootP.total = b; window.__bootSet && window.__bootSet(0.2 + 0.8 * (b ? a / b : 0)) }
+LM.onStart = LM.onProgress = (url, a, b) => { bootP.done = a; bootP.total = b; bootP.at = performance.now(); window.__bootSet && window.__bootSet(0.2 + 0.8 * (b ? a / b : 0)) }
 function bootWatch(onReady) {
   const t0 = performance.now()
   const tick = () => {
-    const done = bootP.total > 0 && bootP.done >= bootP.total && (charAssets.ready || charAssets.failed)
+    // three は同じ画像を何体ぶんも読む時に数が合わなくなることがある（72% で止まった）。人物が読めて、1.5秒新しい読み込みが無ければ終わりとみなす
+    const quiet = performance.now() - (bootP.at || 0) > 1500
+    const done = bootP.total > 0 && (bootP.done >= bootP.total || quiet) && (charAssets.ready || charAssets.failed)
     if (done || performance.now() - t0 > 40000) {   // 40 秒たっても終わらない時は遊べる所まで進める
       window.__bootDone = true; window.__bootSet && window.__bootSet(1)
       const b = $('boot'); b.classList.add('out'); setTimeout(() => b.classList.add('hidden'), 380)
