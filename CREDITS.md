@@ -1,5 +1,3 @@
-- snd/loop_highway.mp3: 100 CC0 SFX #2 / rubberduck / CC0
-- snd/air_01.mp3: 100 CC0 SFX #2 / rubberduck / CC0
 - snd/swish-1.mp3: Swishes Sound Pack / artisticdude / CC0
 - snd/swish-2.mp3: Swishes Sound Pack / artisticdude / CC0
 - snd/swish-3.mp3: Swishes Sound Pack / artisticdude / CC0
@@ -45,3 +43,5 @@
 - snd/wingflap.mp3: Dragon Flap / VishwaJai / CC0（OpenGameArt dragon-flap-0。カラスの羽ばたきに使う）
 - snd/bat_crack.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0（bfh1_wood_hit_01。バットの音の代わり）
 - snd/ball_hit.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0（bfh1_hit_01。ボールが当たったゴンッ）
+- snd/wind_loop.wav: Howling wind / Tvabutzku1234 / CC0（Wikimedia Commons。14秒の継ぎ目なしループにした。空中で速い時の風）
+- snd/city_street_loop.wav: Sunday in the city street noise 1 / cori / Public domain（Wikimedia Commons。静かな通りの22.5秒ループ。街の環境音）

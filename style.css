@@ -12,7 +12,21 @@ button,a{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touc
 #view{position:fixed;inset:0}
 #view canvas{display:block;width:100%;height:100%;touch-action:none}
 .screen{position:fixed;inset:0;z-index:10}
-#boot{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:var(--indigo);color:var(--paper);font-family:var(--hand);font-size:20px}
+#boot{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:radial-gradient(ellipse at 50% 40%,#2d3b5e,#141b2e 75%);color:var(--paper);font-family:var(--hand);transition:opacity .35s}
+#boot.out{opacity:0;pointer-events:none}
+.boot-art{display:flex;flex-direction:column;align-items:center}
+.boot-noren{display:flex;gap:4px;width:min(200px,54vw);transform-origin:50% 0;animation:sway 4s ease-in-out infinite;border-top:8px solid #6b4e30;border-radius:4px 4px 0 0}
+.boot-noren span{flex:1;height:64px;background:#f6f1e4;color:var(--indigo);font-family:var(--brush);font-size:26px;display:flex;align-items:center;justify-content:center;border-radius:0 0 2px 2px}
+.boot-bowl{width:min(150px,40vw);height:auto;margin-top:6px;display:block}
+.boot-bowl .steam path{opacity:0;animation:bootSteam 2.4s ease-out infinite}
+.boot-bowl .steam .s2{animation-delay:.8s}.boot-bowl .steam .s3{animation-delay:1.6s}
+@keyframes bootSteam{0%{opacity:0;transform:translateY(10px)}30%{opacity:.85}100%{opacity:0;transform:translateY(-14px)}}
+.boot-msg{font-size:18px;letter-spacing:.05em}
+.boot-bar{width:min(240px,64vw);height:10px;border-radius:5px;overflow:hidden;background:#3a2a1c;box-shadow:inset 0 0 0 2px #6b4e30}
+.boot-bar i{display:block;height:100%;transform-origin:0 50%;transform:scaleX(0);transition:transform .25s;background:linear-gradient(90deg,#c49a62,#e8c58e,#c49a62);background-size:60px 100%;animation:bootGrain 1.2s linear infinite}
+@keyframes bootGrain{to{background-position:60px 0}}
+.boot-pct{font-size:12px;opacity:.75;font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){.boot-noren,.boot-bowl .steam path,.boot-bar i{animation:none}.boot-bowl .steam path{opacity:.7}}
 #boot-err{position:fixed;inset:auto 8px 8px 8px;z-index:99;background:#fff;color:#b00;font:12px/1.4 monospace;white-space:pre-wrap;padding:10px;border-radius:6px}
 
 /* ---------- タイトル: 暖簾 ---------- */
@@ -93,6 +107,12 @@ button,a{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touc
 /* 方角だけの矢印: 画面の上（伝票と丼のあいだ）に固定（2026-11-03 本人「高さを表現すると分かりづらい。方角だけでいい」） */
 .edge-arrow{position:absolute;left:50%;top:max(10px,env(safe-area-inset-top));width:54px;height:54px;margin-left:-27px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(29,26,22,.45);border-radius:50%}
 .edge-arrow svg{width:30px;height:30px;fill:var(--red);stroke:#fff;stroke-width:1.6}
+/* 高さ: 方角の矢印のすぐ下。階数・上か下かの山形・差（2026-11-03 本人「やっぱ高さがわからん」） */
+.height-box{position:absolute;left:50%;top:calc(max(10px,env(safe-area-inset-top)) + 58px);transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(29,26,22,.6);color:#fff;font-family:var(--hand);font-size:12px;line-height:1.3;white-space:nowrap}
+.height-box .chev{width:14px;height:11px;fill:none;stroke:#ffd27a;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.height-box[data-dir=down] .chev{transform:rotate(180deg)}
+.height-box[data-dir=same] .chev{display:none}
+.height-box[data-dir=up] #hDiff,.height-box[data-dir=down] #hDiff{color:#ffd27a}
 .edge-arrow span{font-family:var(--hand);font-size:12px;color:#fff;text-shadow:0 1px 3px #000}
 .miss{position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;color:#fff;text-shadow:0 1px 4px #000;animation:fadeUp .8s ease-out forwards}
 .miss span{font-size:40px;line-height:1;color:var(--red);-webkit-text-stroke:1.5px #fff}

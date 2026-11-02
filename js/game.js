@@ -1,27 +1,43 @@
 // 空中出前 宙吊軒（1日だけ職場体験 #4）。WIRE ESCAPE のワイヤーと街を使った出前ゲーム
 // 速く飛ぶと料理が崩れて怒られる、ゆっくりだと遅れて怒られる
 import * as THREE from 'three'
-import { GAME } from '../shared/config.js?v=8'
-import { createWorld } from '../shared/track.js?v=8'
-import { buildScene } from './scene.js?v=8'
-import { FX } from './fx.js?v=8'
-import { loadSky, setAniso } from './look.js?v=8'
-import { Q } from './quality.js?v=8'
-import { RunnerModel } from './runnermodel.js?v=8'
-import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=8'
-import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js?v=8'
-import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=8'
-import { createBot, botInput } from '../shared/bot.js?v=8'
-import { drawPayslip, totals } from './payslip.js?v=8'
-import { createStreet, buildPoles } from '../shared/street.js?v=8'
-import { addTown, clearShopFront } from '../shared/town.js?v=8'
-import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=8'
-import { carLights } from './carmodel.js?v=8'
-import { LOW } from './quality.js?v=8'
-import { createAir, stepAir } from '../shared/air.js?v=8'
-import { airPool } from './air3d.js?v=8'
+import { GAME } from '../shared/config.js?v=9'
+import { createWorld } from '../shared/track.js?v=9'
+import { buildScene } from './scene.js?v=9'
+import { FX } from './fx.js?v=9'
+import { loadSky, setAniso } from './look.js?v=9'
+import { Q } from './quality.js?v=9'
+import { RunnerModel } from './runnermodel.js?v=9'
+import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=9'
+import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js?v=9'
+import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=9'
+import { createBot, botInput } from '../shared/bot.js?v=9'
+import { drawPayslip, totals } from './payslip.js?v=9'
+import { createStreet, buildPoles } from '../shared/street.js?v=9'
+import { addTown, clearShopFront } from '../shared/town.js?v=9'
+import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=9'
+import { carLights } from './carmodel.js?v=9'
+import { LOW } from './quality.js?v=9'
+import { createAir, stepAir } from '../shared/air.js?v=9'
+import { airPool } from './air3d.js?v=9'
 
 const $ = id => document.getElementById(id)
+// ---------------------------------------------------------------- 読み込みの進み具合（ロード画面）
+const LM = THREE.DefaultLoadingManager, bootP = { done: 0, total: 0 }
+LM.onStart = LM.onProgress = (url, a, b) => { bootP.done = a; bootP.total = b; window.__bootSet && window.__bootSet(0.2 + 0.8 * (b ? a / b : 0)) }
+function bootWatch(onReady) {
+  const t0 = performance.now()
+  const tick = () => {
+    const done = bootP.total > 0 && bootP.done >= bootP.total && (charAssets.ready || charAssets.failed)
+    if (done || performance.now() - t0 > 40000) {   // 40 秒たっても終わらない時は遊べる所まで進める
+      window.__bootDone = true; window.__bootSet && window.__bootSet(1)
+      const b = $('boot'); b.classList.add('out'); setTimeout(() => b.classList.add('hidden'), 380)
+      onReady(); return
+    }
+    setTimeout(tick, 120)
+  }
+  tick()
+}
 const STEP = GAME.step
 const URL_ = 'https://tom3games.github.io/sky-delivery/'
 const store = { get: k => { try { return localStorage.getItem(k) } catch (e) { return null } }, set: (k, v) => { try { localStorage.setItem(k, v) } catch (e) {} } }
@@ -30,7 +46,7 @@ const store = { get: k => { try { return localStorage.getItem(k) } catch (e) { r
 const T = {
   ja: {
     series: '1日だけ職場体験 #4', logo: '空中出前', masterName: '店主', masterLine: '4分で稼げるだけ稼いでこい。遠いほど高いで',
-    start: '出勤する', how: '仕事の説明', lang: 'EN', more: 'ほかのゲーム', muteOn: '音 入', muteOff: '音 切', loading: '仕込み中',
+    start: '出勤する', how: '仕事の説明', lang: 'EN', more: 'ほかのゲーム', muteOn: '音 入', muteOff: '音 切', loading: 'スープを仕込んでいます',
     howTitle: '出前の心得', ok: 'わかった',
     howItems: [
       'ビルを<b>タッチ</b>でワイヤー。大きいボタンなら前の上へ自動で',
@@ -42,6 +58,7 @@ const T = {
     keysPc: 'PC: WASD・矢印で移動　クリックでワイヤー（E は前の上へ自動）　Space ジャンプ　ドラッグで見回す',
     keysTouch: '左のスティックで移動、画面をタッチでワイヤー、なぞると見回す。壁に向かって走ると登れる',
     credit: '音: Kenney, rubberduck, artisticdude, poinl, Almitory ほか（CC0）。詳しくは CREDITS.md',
+    hUp: m => `上に ${m}m`, hDown: m => `下に ${m}m`, hSame: '同じ高さ', hFloor: f => `${f}階`, hShop: '店先',
     ticketHead: '御伝票', shiftLeft: '残り', toShop: '店に戻って受け取る', shopName: '宙吊軒', nth: n => `${n}件目`, earn: y => `稼ぎ ${y.toLocaleString()}円`,
     pickHead: '次の注文', offerNear: (d, m, y) => `近場 ${m}m ${y.toLocaleString()}円`, offerFar: (d, m, y) => `遠方 ${m}m ${y.toLocaleString()}円`,
     signNear: '近場', signFar: '遠方', signWait: '出前中', yen: y => `${y.toLocaleString()}円`,
@@ -77,7 +94,7 @@ const T = {
   },
   en: {
     series: 'ONE-DAY JOB #4', logo: 'Sky Delivery', masterName: 'Chef', masterLine: 'Four minutes. Earn what you can. Far pays more.',
-    start: 'Clock in', how: 'How to work', lang: 'JP', more: 'More games', muteOn: 'Sound on', muteOff: 'Muted', loading: 'Prepping',
+    start: 'Clock in', how: 'How to work', lang: 'JP', more: 'More games', muteOn: 'Sound on', muteOff: 'Muted', loading: 'Simmering the soup',
     howTitle: 'Delivery rules', ok: 'Got it',
     howItems: [
       '<b>Tap</b> a building to shoot a wire. The big button aims ahead for you',
@@ -89,6 +106,7 @@ const T = {
     keysPc: 'PC: WASD / arrows move · click to wire (E auto-aims) · Space jump · drag to look',
     keysTouch: 'Left stick moves, tap to wire, drag to look around. Run into a wall to climb it',
     credit: 'Sounds: Kenney, rubberduck, artisticdude, poinl, Almitory and others (CC0). See CREDITS.md',
+    hUp: m => `${m}m up`, hDown: m => `${m}m down`, hSame: 'Same height', hFloor: f => `Floor ${f}`, hShop: 'Shop',
     ticketHead: 'ORDER', shiftLeft: 'Left', toShop: 'Back to the shop', shopName: 'Chuzuri-ken', nth: n => `#${n}`, earn: y => `Earned ¥${y.toLocaleString()}`,
     pickHead: 'Next order', offerNear: (d, m, y) => `Near ${m}m ¥${y.toLocaleString()}`, offerFar: (d, m, y) => `Far ${m}m ¥${y.toLocaleString()}`,
     signNear: 'NEAR', signFar: 'FAR', signWait: 'OUT', yen: y => `¥${y.toLocaleString()}`,
@@ -302,6 +320,30 @@ const target = new THREE.Group()
   target.userData = { cust, lan, person }
 }
 scene.add(target)
+// 届け先の高さを見せる目印（2026-11-03 本人「方角はわかるようになったけど、やっぱ高さがわからん」）
+// 1) 地面から屋上の上まで伸びる光の柱（遠くからでも、建物の向こうでも上の方が見える）と、窓の高さに光る輪
+// 2) 窓の周りの光る枠（暖簾の朱色）。近づくと（40m 以内）太く明るくなる
+const beam = (() => {
+  const c = document.createElement('canvas'); c.width = 4; c.height = 128
+  const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 128)
+  g.addColorStop(0, 'rgba(255,150,60,0)'); g.addColorStop(0.12, 'rgba(255,140,50,.95)'); g.addColorStop(1, 'rgba(240,90,40,.45)')
+  x.fillStyle = g; x.fillRect(0, 0, 4, 128)
+  const tex = new THREE.CanvasTexture(c)
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false })   // 空の明るさに負けないよう加算でなく普通の重ね方（暖簾の朱）
+  const col = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 16, 1, true).translate(0, 0.5, 0), mat)   // 下端が原点、高さ1（scale.y で伸ばす）
+  col.renderOrder = 3
+  const band = new THREE.Mesh(new THREE.TorusGeometry(1, 0.12, 6, 28), new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.95, depthWrite: false, fog: false }))
+  band.rotation.x = Math.PI / 2; band.renderOrder = 3
+  const g2 = new THREE.Group(); g2.add(col, band); g2.visible = false; scene.add(g2)
+  return { g: g2, col, band, mat }
+})()
+const winGlow = (() => {
+  const m = new THREE.MeshBasicMaterial({ color: 0xff6a3a, transparent: true, opacity: 0.9, depthWrite: false, fog: false })
+  const g2 = new THREE.Group(), W = 3.3, H = 2.9, T = 0.22
+  for (const [w, h, x, y] of [[W + T, T, 0, H / 2], [W + T, T, 0, -H / 2], [T, H, -W / 2, 0], [T, H, W / 2, 0]]) { const b = new THREE.Mesh(new THREE.PlaneGeometry(w, h), m); b.position.set(x, y, 0.03); g2.add(b) }
+  target.add(g2)
+  return { g: g2, m }
+})()
 // 投げた料理
 const flying = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.22), new THREE.MeshStandardMaterial({ color: 0xc9ced3, metalness: 0.75, roughness: 0.3 }))
 flying.visible = false; scene.add(flying)
@@ -436,7 +478,7 @@ function toTitle() {
   demo = { r: spawnRunner('demo'), b: createBot('skilled'), sh: createShift(world, 7) }; air = createAir(world, 7)
   newModel()
   show('title'); $('touch').classList.add('hidden')
-  Snd.loop('bgm', 'snd/bgm_title.mp3', 0.22); Snd.loop('amb', 'snd/loop_highway.mp3', 0.12)
+  Snd.loop('bgm', 'snd/bgm_title.mp3', 0.22); Snd.loop('amb', 'snd/city_street_loop.wav', 0.2)
 }
 function startShift(seed = Math.floor(Math.random() * 1e6)) {
   Snd.init(); sfx('click')
@@ -445,7 +487,7 @@ function startShift(seed = Math.floor(Math.random() * 1e6)) {
   newModel()
   cam.hd = Math.PI / 2; cam.pitch = 0.4; cam.userT = -1e9
   show(null); $('touch').classList.toggle('hidden', !touchMode)
-  Snd.loop('bgm', 'snd/bgm_play.mp3', 0.16); Snd.loop('amb', 'snd/loop_highway.mp3', 0.16); Snd.loop('wind', 'snd/air_01.mp3', 0.0001)
+  Snd.loop('bgm', 'snd/bgm_play.mp3', 0.16); Snd.loop('amb', 'snd/city_street_loop.wav', 0.26); Snd.loop('wind', 'snd/wind_loop.wav', 0.0001)
   say(t('masterName') + '「' + t('masterLine') + '」', 2.6)
   hintAt = 4.6
 }
@@ -500,9 +542,24 @@ function updateHud(dt) {
   ar.classList.remove('hidden')
   $('arrowD').textContent = Math.round(Math.hypot(goal.x - me.x, goal.z - me.z)) + 'm'
   ar.querySelector('svg').style.transform = `rotate(${compassAng(goal.x, goal.z)}rad)`
-  const tkR = $('ticket').getBoundingClientRect(), bw = $('bowl').getBoundingClientRect()
-  const cx = Math.round((tkR.right + bw.left) / 2)
-  if (ar._cx !== cx) { ar._cx = cx; ar.style.left = cx + 'px' }
+  // 高さ: 階数と、自分より上か下か（山形の図）と差（m）。差が小さければ「同じ高さ」
+  const carryingO = sh.carrying || sh.thrown
+  const dy = carryingO ? o.y - (me.y + 1.1) : (world.groundAt(S.x, S.z, 2).h) - me.y
+  const hd = Math.round(Math.abs(dy)), dir = Math.abs(dy) < 2.5 ? 'same' : dy > 0 ? 'up' : 'down'
+  const hb = $('heightBox')
+  if (hb._k !== dir + hd + (carryingO ? o.floor : 's') + lang) {
+    hb._k = dir + hd + (carryingO ? o.floor : 's') + lang
+    hb.dataset.dir = dir
+    $('hFloor').textContent = carryingO ? t('hFloor')(o.floor) : t('hShop')
+    $('hDiff').textContent = dir === 'same' ? t('hSame') : t(dir === 'up' ? 'hUp' : 'hDown')(hd)
+  }
+  // 置き場所（伝票と丼のあいだ）は画面の大きさが変わった時だけ測り直す（毎フレーム測ると再レイアウトで重い）
+  if (ar._W !== innerWidth || ar._H !== innerHeight) {
+    ar._W = innerWidth; ar._H = innerHeight
+    const tkR = $('ticket').getBoundingClientRect(), bw = $('bowl').getBoundingClientRect()
+    const cx = Math.round((tkR.right + bw.left) / 2)
+    ar.style.left = cx + 'px'; hb.style.left = cx + 'px'
+  }
 }
 
 // カメラの前向き（水平）に対して、自分から目標 (x, z) がどっちか。0 = 正面、+ = 右。高さは使わない
@@ -787,6 +844,22 @@ function render(dt) {
     target.userData.lan.position.y = 0.4 + Math.sin(k * 2) * 0.05
     const dT = camera.position.distanceTo(target.position); target.userData.lan.scale.setScalar(Math.max(1, dT / 30))
   }
+  // 光の柱と窓の枠（運んでいる間だけ）
+  const goingTo = shift && (shift.carrying || shift.thrown) ? curOrder(shift) : null
+  beam.g.visible = !!goingTo; winGlow.g.visible = !!goingTo
+  if (goingTo) {
+    const o2 = goingTo, bx = o2.x + o2.nx * 1.6, bz = o2.z + o2.nz * 1.6, gy = world.groundAt(bx, bz, 2).h
+    const top = Math.max(o2.y + 30, (o2.bld && o2.bld.y1 != null ? o2.bld.y1 : o2.y) + 25)   // 屋上よりずっと上まで（手前の建物の向こうからも先が見える）
+    const dC = Math.hypot(camera.position.x - bx, camera.position.z - bz), near = dC < 40
+    const R = Math.max(0.5, dC * 0.008)   // 遠くても細くなりすぎない（画面で数px以上）
+    beam.g.position.set(bx, gy, bz)
+    beam.col.scale.set(R, top - gy, R)
+    beam.mat.opacity = Math.max(0, Math.min(1, (dC - 15) / 30)) * 0.85   // 近づくほど薄く（15m 以内は消して窓と客を隠さない）
+    beam.band.position.y = o2.y - gy; beam.band.scale.setScalar(R * 2.2)
+    const k = performance.now() / 1000, pulse = 0.5 + 0.5 * Math.sin(k * 5)
+    winGlow.m.opacity = near ? 0.75 + 0.25 * pulse : 0.55
+    winGlow.g.scale.setScalar(near ? 1.08 + 0.06 * pulse : 1)
+  }
   const atShop = !!(shift && !shift.carrying && !shift.thrown && shift.offer)
   pickRing.ring.material.opacity = atShop ? 0.55 + Math.sin(performance.now() / 250) * 0.25 : 0.12
   pickRing.fill.visible = atShop
@@ -802,7 +875,7 @@ function render(dt) {
   if (aimOn) { const p = aimMark.userData.p; aimMark.visible = true; aimMark.position.set(p.x, p.y, p.z); aimMark.lookAt(camera.position); aimMark.scale.setScalar(Math.max(1, camera.position.distanceTo(aimMark.position) * 0.04)) }
   const wb = document.querySelector('.tbtn[data-k=wire]'); if (wb && wb._aim !== aimOn) { wb._aim = aimOn; wb.classList.toggle('aim', aimOn) }
   // 風の音は速さで
-  if (mode === 'play' && me) { const v3 = Math.hypot(me.vx, me.vy, me.vz); const wl = Snd.loops.wind; if (wl && wl.g) wl.g.gain.value = Math.min(0.75, Math.max(0, (v3 - 6) / 32)) }
+  if (mode === 'play' && me) { const v3 = Math.hypot(me.vx, me.vy, me.vz); const wl = Snd.loops.wind; if (wl && wl.g) wl.g.gain.value = me.grounded ? 0 : Math.min(0.35, Math.max(0, (v3 - 16) / 40)) }   // 風: 地面では鳴らさない・空中で 16m/s から（2026-11-03 本人「謎の水の音がずっと鳴ってる」）
   drawSpeed(mode === 'play' && me ? Math.hypot(me.vx, me.vy, me.vz) : 0, dt)
   // 車と通行人（カメラの近くだけ描く）、昼→夜
   carsDraw.draw(street.traffic.cars, camera.position, dt); pedsDraw.draw(street.peds, camera.position, dt)
@@ -823,7 +896,7 @@ function render(dt) {
 
 // ---------------------------------------------------------------- 検証用の窓口
 window.sky = {
-  get mode() { return mode }, log, get hitStop() { return hitStop }, get flashA() { return flashA }, get fovKick() { return fovKick }, get me() { return me }, get sh() { return sh }, get air() { return air }, JOB, RUN, world, camera, touchMode, cam,
+  get mode() { return mode }, log, get hitStop() { return hitStop }, get flashA() { return flashA }, get fovKick() { return fovKick }, get me() { return me }, get sh() { return sh }, get air() { return air }, beam: beam.g, JOB, RUN, world, camera, touchMode, cam,
   start: seed => startShift(seed), toTitle, showResult, setLang: l => { lang = l; applyLang() }, get lang() { return lang },
   dbg: {
     pause: on => { dbgPause = on }, step: n => { for (let i = 0; i < n; i++) stepOnce(); render(STEP) },
@@ -846,4 +919,5 @@ window.sky = {
 applyLang()
 toTitle()
 requestAnimationFrame(frame)
-setTimeout(() => { $('boot').classList.add('hidden'); window.__skyReady = true }, 50)
+// ロード画面は読み込みが全部終わってから消す（テクスチャ・人物の GLB を three の読み込み数で数える）
+bootWatch(() => { window.__skyReady = true })

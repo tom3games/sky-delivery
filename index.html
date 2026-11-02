@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Klee+One:wght@600&family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
 </head>
 <body>
@@ -86,6 +86,7 @@
   </div>
   <div id="say" class="say hidden"></div>
   <div id="arrow" class="edge-arrow hidden"><svg viewBox="0 0 24 24"><path d="M12 2 L21 20 L12 15 L3 20Z"/></svg><span id="arrowD"></span></div>
+  <div id="heightBox" class="height-box" data-dir="same"><span id="hFloor"></span><svg class="chev" viewBox="0 0 16 12" aria-hidden="true"><path d="M2 10 L8 3 L14 10"/></svg><span id="hDiff"></span></div>
   <div id="miss" class="miss hidden"><span>×</span><small data-t="tooFar"></small></div>
   <button id="btnPause" class="corner-btn" data-t="pause"></button>
   <div id="touch" class="touch hidden">
@@ -117,7 +118,25 @@
   </div>
 </section>
 
-<div id="boot" class="boot"><span data-t="loading">仕込み中…</span></div>
+<!-- ロード画面: 暖簾の下で湯気の立つ丼（2026-11-03 本人「開いた最初に、いい感じのロード中の画面を。そのゲームの雰囲気に合ったやつ」） -->
+<div id="boot" class="boot">
+  <div class="boot-art" aria-hidden="true">
+    <div class="boot-noren"><span>ら</span><span>ー</span><span>め</span></div>
+    <svg class="boot-bowl" viewBox="0 0 160 110"><g class="steam" fill="none" stroke="#f6f1e4" stroke-width="5" stroke-linecap="round"><path class="s1" d="M55 52 C45 40 65 32 55 18"/><path class="s2" d="M80 50 C70 36 90 28 80 10"/><path class="s3" d="M105 52 C95 40 115 32 105 18"/></g><path d="M18 60 H142 C140 88 112 104 80 104 C48 104 20 88 18 60Z" fill="#b22a22" stroke="#1d1a16" stroke-width="4"/><path d="M30 70 H130" stroke="#f6f1e4" stroke-width="3" stroke-dasharray="7 6"/><ellipse cx="80" cy="60" rx="62" ry="7" fill="#e3b55f" stroke="#1d1a16" stroke-width="4"/></svg>
+  </div>
+  <p class="boot-msg" data-t="loading">スープを仕込んでいます</p>
+  <div class="boot-bar"><i id="bootBar"></i></div><span id="bootPct" class="boot-pct">0%</span>
+</div>
+<script>
+// ロード画面の進み具合（three の読み込み数を game.js が __bootSet で渡す。それまでは少しずつ進める）
+(function(){
+  var bar=document.getElementById('bootBar'),pct=document.getElementById('bootPct'),k=0,real=false;
+  function draw(){bar.style.transform='scaleX('+k.toFixed(3)+')';pct.textContent=Math.round(k*100)+'%'}
+  window.__bootSet=function(v){real=true;if(v>k){k=Math.min(1,v);draw()}};
+  var t=setInterval(function(){if(real||window.__bootDone){clearInterval(t);return}k=Math.min(0.18,k+0.006);draw()},250);   // 本体の読み込み中（three 本体の取得）
+  draw();
+})();
+</script>
 
 <script>
 // 拡大を止める（ピンチ・ダブルタップ・Ctrl+ホイール）。iOS は user-scalable=no を無視するので JS でも止める
@@ -130,20 +149,22 @@
   window.addEventListener('wheel',function(e){if(e.ctrlKey)e.preventDefault()},opt);
   window.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&['+','-','=','0',';'].indexOf(e.key)>=0)e.preventDefault()});
 })();
-// 起動失敗の保険
+// 起動失敗の保険: エラー（読み込めなかったファイルも）があって 9 秒たっても準備できていない、または 60 秒たっても準備できていない時に原因を出す
 (function(){
   var errs=[];
-  window.addEventListener('error',function(e){errs.push((e.message||'error')+' @'+(e.filename||'')+':'+(e.lineno||''))});
+  window.addEventListener('error',function(e){var tg=e.target;if(tg&&tg!==window&&(tg.src||tg.href))errs.push('load failed: '+(tg.src||tg.href));else errs.push((e.message||'error')+' @'+(e.filename||'')+':'+(e.lineno||''))},true);
   window.addEventListener('unhandledrejection',function(e){errs.push('reject: '+(e.reason&&e.reason.message||e.reason))});
-  setTimeout(function(){
-    if(window.__skyReady) return;
+  function show(){
+    if(window.__skyReady||document.getElementById('boot-err')) return;
     var d=document.createElement('div');d.id='boot-err';
     d.textContent='起動できませんでした / failed to start\n'+(errs.join('\n')||'(no error captured)')+'\n'+navigator.userAgent;
     document.body.appendChild(d);
-  },9000);
+  }
+  setTimeout(function(){if(errs.length)show()},9000);
+  setTimeout(show,60000);
 })();
 </script>
-<script src="sfx.js?v=8"></script>
-<script type="module" src="js/game.js?v=8"></script>
+<script src="sfx.js?v=9"></script>
+<script type="module" src="js/game.js?v=9"></script>
 </body>
 </html>

@@ -284,6 +284,30 @@ await t('AI臭さチェック NG 0', () => {
 const browser = await chromium.launch({ ...MUTE_LAUNCH, args: [...MUTE_LAUNCH.args, ...GL] })
 const p = await open(browser)
 await t('起動時にエラーが出ない', async () => { expect(p.errs.length === 0, p.errs.join('|')) })
+await t('ロード画面（2026-11-03 本人「開いた最初に、いい感じのロード中の画面を」）: 開いた瞬間に世界観の絵と文字と進み具合が出て、読み込み（人物の GLB）が終わるまで消えない。終わったら消える', async () => {
+  const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(ctx)
+  let release; const gate = new Promise(r => { release = r })
+  await ctx.route('**/assets/chars/Ranger.glb*', async route => { await gate; await route.continue() })   // 人物の読み込みを止めておく
+  const q = await ctx.newPage(); const errs = []; q.on('pageerror', e => errs.push(e.message))
+  await q.goto(URL0, { waitUntil: 'domcontentloaded' })
+  const first = await q.evaluate(() => { const b = document.getElementById('boot'); const r = b.getBoundingClientRect(); return { shown: r.width > 0 && !b.classList.contains('hidden'), msg: b.querySelector('.boot-msg').textContent, art: !!b.querySelector('svg') } })
+  await q.waitForTimeout(2500)
+  const mid = await q.evaluate(() => ({ shown: !document.getElementById('boot').classList.contains('hidden'), ready: !!window.__skyReady, pct: document.getElementById('bootPct').textContent }))
+  release()
+  await q.waitForFunction(() => window.__skyReady, null, { timeout: 30000 }); await q.waitForTimeout(600)
+  const after = await q.evaluate(() => ({ hidden: document.getElementById('boot').classList.contains('hidden'), pct: document.getElementById('bootPct').textContent, err: !!document.getElementById('boot-err') }))
+  await ctx.close()
+  expect(first.shown && first.art && first.msg.length >= 6 && mid.shown && !mid.ready && parseInt(mid.pct) > 0 && parseInt(mid.pct) < 100 && after.hidden && after.pct === '100%' && !after.err && !errs.length, JSON.stringify({ first, mid, after, errs })); return { msg: first.msg, mid: mid.pct }
+})
+await t('起動失敗の保険: 本体のファイルが読めないと、9秒で原因の表示が出る', async () => {
+  const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(ctx)
+  await ctx.route('**/js/fx.js*', route => route.fulfill({ status: 404, body: 'nope' }))
+  const q = await ctx.newPage(); await q.goto(URL0)
+  await q.waitForSelector('#boot-err', { timeout: 15000 }).catch(() => null)
+  const r = await q.evaluate(() => { const d = document.getElementById('boot-err'); return { shown: !!d, text: d ? d.textContent.slice(0, 80) : '' } })
+  await ctx.close()
+  expect(r.shown && /起動できません/.test(r.text), JSON.stringify(r)); return r
+})
 await t('ブラウザの拡大が起きない', async () => {
   const r = await p.evaluate(() => {
     const vp = document.querySelector('meta[name=viewport]').content
@@ -312,6 +336,20 @@ await t('出勤: 伝票に次の注文（1件目は近場）が出る。店の�
   const r = await p.evaluate(() => ({ carrying: sky.sh.carrying, tier: sky.sh.cur && sky.sh.cur.tier, dish: document.getElementById('tDish').textContent, to: document.getElementById('tTo').textContent, time: document.getElementById('tTime').textContent, pick: sky.log.some(e => e.t === 'pickup') }))
   expect(!before.carrying && /近場/.test(before.to) && /次の注文/.test(before.dish) && /稼ぎ/.test(before.earn) && r.carrying && r.tier === 'near' && r.pick && r.dish.length > 1 && /階/.test(r.to) && /秒/.test(r.time), JSON.stringify({ before, r })); return { before: before.to + ' / ' + before.note, to: r.to }
 })
+await t('音（2026-11-03 本人「謎の水の音がずっと鳴ってる」）: 鳴りっぱなしは BGM・街の音・風の3つだけ。風は録音のループ（WAV）で、地面では0、空中で速い時だけ鳴り、上限 0.35', async () => {
+  await p.waitForFunction(() => Snd.loops.wind && Snd.loops.wind.g, null, { timeout: 10000 }).catch(() => {})   // ループは読み込み後に鳴り始める
+  const r = await p.evaluate(() => {
+    const me = sky.me, wl = Snd.loops.wind, slots = Object.keys(Snd.loops).filter(k => Snd.loops[k])
+    const urls = Object.fromEntries(slots.map(k => [k, Snd.loops[k].url]))
+    const gain = () => wl && wl.g ? +wl.g.gain.value.toFixed(3) : null
+    Object.assign(me, { grounded: true, vx: 12, vy: 0, vz: 0 }); sky.dbg.render ? sky.dbg.render(1) : sky.dbg.step(1); const ground = gain()
+    me.y += 30; Object.assign(me, { grounded: false, vx: 12, vy: 0, vz: 0 }); sky.dbg.render ? sky.dbg.render(1) : sky.dbg.step(0); const slow = gain()
+    Object.assign(me, { grounded: false, vx: 60, vy: 0, vz: 0 }); sky.dbg.render ? sky.dbg.render(1) : sky.dbg.step(0); const fast = gain()
+    me.y -= 30; Object.assign(me, { vx: 0 })
+    return { slots, urls, ground, slow, fast, hasWind: !!wl }
+  })
+  expect(r.slots.every(k => ['bgm', 'amb', 'wind'].includes(k)) && /wind_loop\.wav/.test(r.urls.wind || '') && /city_street_loop\.wav/.test(r.urls.amb || '') && !Object.values(r.urls).some(u => /air_01|loop_highway/.test(u)) && r.ground === 0 && r.slow === 0 && r.fast > 0 && r.fast <= 0.35, JSON.stringify(r)); return r
+})
 await t('矢印は方角だけ（2026-11-03 本人「高さを表現すると分かりづらい。方角だけでいい」）: 画面の上（伝票と丼のあいだ）に固定・届け先が真上でも真下でも向きは水平の方角だけで決まる・正面0°/右90°/後ろ180°', async () => {
   const r = await p.evaluate(() => {
     const ar = document.getElementById('arrow'), svg = ar.querySelector('svg')
@@ -326,6 +364,27 @@ await t('矢印は方角だけ（2026-11-03 本人「高さを表現すると分
     return { hi: +hi.toFixed(3), lo: +lo.toFixed(3), want: +want.toFixed(3), wantHi: +wantHi.toFixed(3), sameSpot: Math.abs(rcHi.left - rcLo.left) < 1 && Math.abs(rcHi.top - rcLo.top) < 1, top: Math.round(rcHi.top), clear: rcHi.left >= tk.right - 2 && rcHi.right <= bw.left + 2, ahead: +ahead.toFixed(2), right: +(right * 180 / Math.PI).toFixed(0), back: +(Math.abs(back) * 180 / Math.PI).toFixed(0) }
   })
   expect(Math.abs(r.hi - r.lo) < 0.05 && Math.abs(r.hi - r.wantHi) < 0.03 && Math.abs(r.lo - r.want) < 0.03 && r.sameSpot && r.top < 80 && r.clear && Math.abs(r.ahead) < 0.02 && Math.abs(r.right - 90) <= 1 && Math.abs(r.back - 180) <= 1, JSON.stringify(r)); return r
+})
+await t('高さ（2026-11-03 本人「やっぱ高さがわからん」）: 方角の矢印の下に階数・上か下かの山形・差のm。届け先が上なら上向き「上に 18m」、下なら下向き「下に 12m」、差が小さいと「同じ高さ」', async () => {
+  const r = await p.evaluate(() => {
+    const o = sky.sh.cur, me = sky.me, hb = document.getElementById('heightBox'), out = {}
+    const y0 = me.y
+    for (const [k, d] of [['up', 18], ['down', -12], ['same', 1]]) { me.y = o.y - 1.1 - d; sky.dbg.render(1); out[k] = { dir: hb.dataset.dir, text: hb.textContent, chev: getComputedStyle(hb.querySelector('.chev')).transform, shown: getComputedStyle(hb.querySelector('.chev')).display !== 'none' } }
+    me.y = y0; sky.dbg.render(1)
+    const rc = hb.getBoundingClientRect(), ar = document.getElementById('arrow').getBoundingClientRect()
+    out.below = rc.top >= ar.bottom - 2 && Math.abs((rc.left + rc.right) / 2 - (ar.left + ar.right) / 2) < 3
+    out.floor = o.floor
+    return out
+  })
+  expect(r.up.dir === 'up' && /上に 18m/.test(r.up.text) && r.up.shown && r.up.chev === 'none' && r.down.dir === 'down' && /下に 12m/.test(r.down.text) && r.down.chev !== 'none' && r.same.dir === 'same' && /同じ高さ/.test(r.same.text) && !r.same.shown && r.up.text.includes(r.floor + '階') && r.below, JSON.stringify(r)); return { up: r.up.text, down: r.down.text, same: r.same.text }
+})
+await t('光の柱: 届け先の窓の前（壁の外 1.6m）に、地面から屋上より上まで立つ。窓の高さに光る輪', async () => {
+  const r = await p.evaluate(() => {
+    sky.dbg.render(1)
+    const o = sky.sh.cur, b = sky.beam, col = b.children[0], band = b.children[1]
+    return { vis: b.visible, dx: +(b.position.x - (o.x + o.nx * 1.6)).toFixed(2), dz: +(b.position.z - (o.z + o.nz * 1.6)).toFixed(2), bottom: +b.position.y.toFixed(1), top: +(b.position.y + col.scale.y).toFixed(1), roof: o.bld && o.bld.y1, bandY: +(b.position.y + band.position.y).toFixed(1), winY: +o.y.toFixed(1) }
+  })
+  expect(r.vis && Math.abs(r.dx) < 0.01 && Math.abs(r.dz) < 0.01 && r.bottom < 2 && r.top > Math.max(r.winY, r.roof || 0) + 5 && Math.abs(r.bandY - r.winY) < 0.01, JSON.stringify(r)); return r
 })
 await t('画面タッチ: 近くのビルに掛かる／遠すぎる所は、その向きの届く所に掛かるか×', async () => {
   const r = await p.evaluate(() => {
