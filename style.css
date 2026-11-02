@@ -88,12 +88,19 @@ button,a{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touc
 .corner-btn{position:absolute;right:max(10px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));pointer-events:auto;font-size:13px;color:#fff;background:rgba(20,24,36,.55);padding:7px 12px;border-radius:3px}
 /* スマホ操作 */
 .touch{position:absolute;inset:0;pointer-events:none}
-.stick{position:absolute;left:max(18px,env(safe-area-inset-left));bottom:max(18px,env(safe-area-inset-bottom));width:128px;height:128px;border-radius:50%;border:2px solid rgba(255,255,255,.55);background:rgba(20,24,36,.22);pointer-events:auto;touch-action:none}
+/* 左手: 触った所にスティックが出る（WIRE ESCAPE と同じ） */
+.stickzone{position:absolute;left:0;bottom:0;width:46%;height:62%;pointer-events:auto;touch-action:none}
+.stick{position:absolute;left:calc(max(16px,env(safe-area-inset-left)) + 62px);top:calc(100% - max(16px,env(safe-area-inset-bottom)) - 62px);width:124px;height:124px;margin:-62px 0 0 -62px;border-radius:50%;border:2px solid rgba(255,255,255,.45);background:rgba(20,24,36,.28);opacity:.65;pointer-events:none}
+.stick.held{opacity:1}
 .stick .knob{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(246,241,228,.85)}
 .tbtn{position:absolute;pointer-events:auto;width:66px;height:66px;border-radius:50%;background:rgba(20,24,36,.5);border:2px solid rgba(255,255,255,.6);color:#fff;font-weight:700;font-size:14px;touch-action:none;display:flex;align-items:center;justify-content:center}
-.tbtn[data-k=reel]{right:max(96px,calc(env(safe-area-inset-right) + 86px));bottom:max(24px,env(safe-area-inset-bottom))}
-.tbtn[data-k=jump]{right:max(18px,env(safe-area-inset-right));bottom:max(86px,calc(env(safe-area-inset-bottom) + 76px))}
-.tbtn[data-k=throw]{right:max(18px,env(safe-area-inset-right));bottom:max(170px,calc(env(safe-area-inset-bottom) + 160px));width:58px;height:58px;font-size:13px}
+/* 右手（WIRE ESCAPE と同じ並び）: ワイヤー（大・前の上へ自動で）、その左にジャンプ、ジャンプの上に投げる */
+.tbtn[data-k=wire]{right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));width:104px;height:104px;background:rgba(217,119,42,.42);border-color:rgba(255,190,120,.95)}
+.tbtn[data-k=wire] svg{width:52px;height:52px}
+.tbtn[data-k=wire].aim{box-shadow:0 0 0 3px rgba(255,255,255,.85),0 0 18px rgba(217,119,42,.9)}
+.tbtn[data-k=jump]{right:max(132px,calc(env(safe-area-inset-right) + 132px));bottom:max(20px,calc(env(safe-area-inset-bottom) + 4px));width:80px;height:96px;border-radius:16px}
+.tbtn[data-k=throw]{right:max(132px,calc(env(safe-area-inset-right) + 132px));bottom:max(126px,calc(env(safe-area-inset-bottom) + 110px));width:80px;height:46px;border-radius:12px;font-size:13px}
+@media (max-height:430px){.tbtn[data-k=wire]{width:88px;height:88px}.tbtn[data-k=jump]{right:max(116px,calc(env(safe-area-inset-right) + 116px));width:70px;height:82px}.tbtn[data-k=throw]{right:max(116px,calc(env(safe-area-inset-right) + 116px));bottom:max(108px,calc(env(safe-area-inset-bottom) + 92px));width:70px;height:40px}.stick{width:108px;height:108px;margin:-54px 0 0 -54px}}
 .tbtn.lit{background:#d9772a;border-color:#fff}
 .tbtn.off{opacity:.3}
 .tbtn:active{transform:scale(.94)}
@@ -111,10 +118,9 @@ button,a{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touc
   .title-actions{gap:4px}.foot{margin-top:4px}.chip{min-height:30px}
   #result{flex-direction:row}.result-actions{flex-direction:column;width:190px}.chips{flex-direction:column;width:100%}.chips .chip{width:100%}
   .poster ol{font-size:13px;gap:3px}.poster h2{font-size:22px;margin-bottom:4px}.poster{padding:14px 18px 10px}
-  .stick{width:110px;height:110px}
+  .stick{width:108px;height:108px;margin:-54px 0 0 -54px}
   #slip{height:calc(100svh - 20px);width:auto}
   .slip-wrap{flex:0 1 auto}
   .result-actions .fuda.small{min-width:0;width:100%;font-size:20px}
   .bowl{width:88px;top:max(48px,calc(env(safe-area-inset-top) + 42px))}
-  .tbtn[data-k=throw]{right:max(172px,calc(env(safe-area-inset-right) + 162px));bottom:max(24px,env(safe-area-inset-bottom))}
 }

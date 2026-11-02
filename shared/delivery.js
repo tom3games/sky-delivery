@@ -1,3 +1,4 @@
+import { addTown } from './town.js'
 // 空中出前の仕事の中身（注文・崩れ・遅れ・受け渡し・投げ入れ・お金）。three.js に依存しない。画面と bot で同じものが動く
 // 固定ステップで stepShift を呼ぶ。runner（shared/runner.js）の状態を読むだけで、動きには触らない（投げた料理だけ自分で飛ばす）
 
@@ -6,31 +7,33 @@ export const JOB = {
   orders: 5,
   shop: { x: 30, y: 0, z: 842, r: 7 },   // 店（広場の角の町中華）。ここに来ると次の料理を受け取る
   // 崩れ（0〜100）。運んでいる間だけ増える
-  speedFree: 18,          // これより速く飛ぶと、風でスープが波打つ（m/s）
-  speedK: 0.35,           // その分 1m/s ごとに毎秒これだけ崩れる
-  accelFree: 16,          // 空中で横に振られる加速がこれを超えると崩れる（m/s²）
-  accelK: 0.05,
-  landFree: 12,           // 着地の衝撃（落ちる速さ）がこれを超えると
-  landK: 1.3,
-  bonk: 14,               // 壁にぶつかった
-  climbK: 1.2,            // 壁を駆け上がっている間（毎秒）
+  // 2026-11-02 本人「めっちゃ難しい」「地面走ってる方が早く感じる」: 崩れは速さでなく、急な揺さぶり・着地・壁ぶつけが中心。スイングは罰になりすぎないように
+  speedFree: 30,          // これより速く飛ぶと、風でスープが波打つ（m/s）。18→30（スイングの普通の速さでは崩れない）
+  speedK: 0.25,           // その分 1m/s ごとに毎秒これだけ崩れる
+  accelFree: 22,          // 空中で横に振られる加速がこれを超えると崩れる（m/s²）
+  accelK: 0.04,
+  landFree: 13,           // 着地の衝撃（落ちる速さ）がこれを超えると
+  landK: 1.1,
+  bonk: 10,               // 壁にぶつかった
+  pedHit: 7, carHit: 10,  // 通行人・車にぶつかった（よろける。壁より軽め）
+  climbK: 0.4,            // 壁を這っている間（毎秒）。横移動でも罰になりすぎないよう 1.2→0.8→0.4
   runFree: 6, runK: 0.45,  // 地面を走ると岡持ちが揺れる。6m/s を超えた分 ×これ（毎秒）
   // 受け渡し
-  handR: 3.6,             // 届け先にこの距離まで寄れば手渡し
-  handSpeed: 12,          // 手渡しできる速さの上限（速いと「止まって！」）
+  handR: 5,               // 届け先にこの距離まで寄れば手渡し（3.6→5）
+  handSpeed: 16,          // 手渡しできる速さの上限（12→16。速いと「止まって！」）
   throwR: 2.6,            // 投げた料理がこの距離を通れば入る
   throwBase: 18,          // 投げ入れると必ずこれだけ崩れる
   throwK: 1.6,            // 当たった時の速さ 12m/s を超えた分 ×これ
   // 時間（受け取った瞬間から数える）
-  limitBase: 6, limitPerM: 0.075,
-  firstGrace: 8,          // 1件目は操作に慣れる分だけ長め
+  limitBase: 10, limitPerM: 0.1,   // 6+0.075m → 10+0.1m
+  firstGrace: 10,         // 1件目は操作に慣れる分だけ長め。さらに1件目は崩れても遅れても怒られない（練習）
   // お金
   wage: 1100, hours: 3,   // 基本給（昼の3時間の体験という設定）
   fee: 500,               // 1件届けるごとの配達手当
   tipMax: 500,            // 崩れ0・間に合えば満額
   lateK: 30,              // 遅れ1秒ごとにチップから引く
   earlySec: 4, early: 150,
-  angryMess: 70, angryLate: 12, claim: 300,
+  angryMess: 80, angryLate: 15, claim: 300,
   dropCost: 800           // 投げて落とした料理代
 }
 
@@ -52,6 +55,7 @@ export function mulberry(seed) { let a = seed >>> 0; return () => { a = (a + 0x6
 // 届け先の候補: 店から 90〜300m の建物の、道に面した窓（高さ 9〜34m）
 export function makeTargets(world, seed = 1, n = JOB.orders) {
   const rnd = mulberry(seed), S = JOB.shop
+  const town = addTown(world, S)
   const blds = world.colliders.filter(o => o.kind === 'building' && o.y1 > 14)
   const out = []
   let guard = 0
@@ -73,6 +77,12 @@ export function makeTargets(world, seed = 1, n = JOB.orders) {
     const p = PLACES[Math.floor(rnd() * PLACES.length)]
     out.push({ x, y, z, nx, nz, floor: floor + 1, place: p, dish: DISHES[out.length % DISHES.length], dist: d, bld: o })
   }
+  // 1件は一軒家の2階の窓（2026-11-02 本人「一軒家もいくつか」）。低いので電柱とワイヤーで寄る
+  if (town.houses.length && out.length >= 3) {
+    const h = town.houses[Math.floor(rnd() * town.houses.length)]
+    const x = h.cx + (rnd() * 2 - 1) * (h.hw - 1.5), z = h.cz + h.face * (h.hl + 0.7)
+    out[out.length - 2] = { x, y: h.y0 + 4.3, z, nx: 0, nz: h.face, floor: 2, place: ['お宅', 'house'], house: true, dish: DISHES[0], dist: Math.hypot(x - S.x, z - S.z), bld: h }
+  }
   // 近い順に並べる（1件目で操作に慣れてから遠くへ）
   out.sort((a, b) => a.dist - b.dist)
   out.forEach((t, i) => { t.dish = DISHES[i % DISHES.length] })
@@ -91,11 +101,12 @@ export const curOrder = sh => sh.targets[sh.idx] || null
 
 function finish(sh, how) {
   const o = curOrder(sh), late = Math.max(0, sh.held - sh.limit)
-  const angry = how === 'drop' || sh.mess >= JOB.angryMess || late >= JOB.angryLate
-  let tip = how === 'drop' ? 0 : Math.max(0, Math.round(JOB.tipMax * (1 - sh.mess / 100) - late * JOB.lateK))
+  const practice = sh.idx === 0   // 1件目は練習: 崩れ・遅れでは怒られない（落とすのだけはだめ）
+  const angry = how === 'drop' || (!practice && (sh.mess >= JOB.angryMess || late >= JOB.angryLate))
+  let tip = how === 'drop' ? 0 : Math.max(0, Math.round(JOB.tipMax * (1 - sh.mess / 100) - (practice ? 0 : late * JOB.lateK)))
   if (angry) tip = 0
   const early = how !== 'drop' && sh.limit - sh.held >= JOB.earlySec ? JOB.early : 0
-  const r = { idx: sh.idx, dish: o.dish.id, how, mess: Math.round(sh.mess), late: +late.toFixed(1), held: +sh.held.toFixed(1), limit: +sh.limit.toFixed(1), tip: tip + (angry ? 0 : early), fee: how === 'drop' ? 0 : JOB.fee, angry, reason: how === 'drop' ? 'drop' : sh.mess >= JOB.angryMess ? 'mess' : late >= JOB.angryLate ? 'late' : '' }
+  const r = { idx: sh.idx, dish: o.dish.id, how, mess: Math.round(sh.mess), late: +late.toFixed(1), held: +sh.held.toFixed(1), limit: +sh.limit.toFixed(1), tip: tip + (angry ? 0 : early), fee: how === 'drop' ? 0 : JOB.fee, angry, reason: how === 'drop' ? 'drop' : !angry ? '' : sh.mess >= JOB.angryMess ? 'mess' : late >= JOB.angryLate ? 'late' : '', practice }
   sh.results.push(r)
   sh.events.push({ t: 'deliver', ...r, x: o.x, y: o.y, z: o.z })
   sh.carrying = false; sh.mess = 0; sh.held = 0; sh.thrown = null; sh.idx++
@@ -129,11 +140,13 @@ export function stepShift(sh, r, dt, { throwNow = false } = {}) {
       const ax = (r.vx - sh.pvx) / dt, az = (r.vz - sh.pvz) / dt, ah = Math.hypot(ax, az)
       if (ah > JOB.accelFree && ah < 400) { const k = (ah - JOB.accelFree) * JOB.accelK * dt; add += k; S0.accel += k }
     }
-    if (r.climbing) { add += JOB.climbK * dt; S0.climb += JOB.climbK * dt }
+    if (r.climbing && Math.hypot(r.vx, r.vy, r.vz) > 2.5) { add += JOB.climbK * dt; S0.climb += JOB.climbK * dt }   // 動いている時だけ（張り付いて止まっている間は崩れない）
     if (r.grounded) { const vg = Math.hypot(r.vx, r.vz); if (vg > JOB.runFree) { const k = (vg - JOB.runFree) * JOB.runK * dt; add += k; S0.run += k } }
     for (const e of r.events) {
       if (e.t === 'land' && e.impact > JOB.landFree) { const k = (e.impact - JOB.landFree) * JOB.landK; add += k; S0.land += k }
       if (e.t === 'bonk') { add += JOB.bonk; S0.bonk += JOB.bonk }
+      if (e.t === 'ped') { add += JOB.pedHit; S0.ped = (S0.ped || 0) + JOB.pedHit }
+      if (e.t === 'car') { add += JOB.carHit; S0.car = (S0.car || 0) + JOB.carHit }
     }
     if (add > 0) {
       const before = sh.mess

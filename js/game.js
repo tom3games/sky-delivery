@@ -13,6 +13,11 @@ import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/run
 import { JOB, createShift, stepShift, curOrder, payData, money } from '../shared/delivery.js'
 import { createBot, botInput } from '../shared/bot.js'
 import { drawPayslip, totals } from './payslip.js'
+import { createStreet, buildPoles } from '../shared/street.js'
+import { addTown } from '../shared/town.js'
+import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js'
+import { carLights } from './carmodel.js'
+import { LOW } from './quality.js'
 
 const $ = id => document.getElementById(id)
 const STEP = GAME.step
@@ -26,21 +31,21 @@ const T = {
     start: '出勤する', how: '仕事の説明', lang: 'EN', more: 'ほかのゲーム', muteOn: '音 入', muteOff: '音 切', loading: '仕込み中',
     howTitle: '出前の心得', ok: 'わかった',
     howItems: [
-      'ビルを<b>タッチ</b>でワイヤー。<b>巻取</b>で振り子が速くなる',
+      'ビルを<b>タッチ</b>でワイヤー。大きいボタンなら前の上へ自動で',
       '急ぐほど<b>丼の中身が減る</b>。遅れても怒られる',
       '赤い提灯の窓に<b>そっと寄れば</b>手渡し。<b>投げる</b>のは賭け'
     ],
-    hintWire: '<small>こつ</small>ビルをタッチするとワイヤーが出る', hintWirePc: '<small>こつ</small>ビルをクリック（か E）でワイヤー。Shift で巻き取り',
-    keysPc: 'PC: WASD・矢印で移動　クリックでワイヤー（E でも可）　Space ジャンプ　Shift 巻き取り　F 投げる　ドラッグで見回す',
+    hintWire: '<small>こつ</small>ビルをタッチするとワイヤーが出る', hintWirePc: '<small>こつ</small>ビルをクリック（か E）でワイヤー',
+    keysPc: 'PC: WASD・矢印で移動　クリックでワイヤー（E は前の上へ自動）　Space ジャンプ　F 投げる　ドラッグで見回す',
     keysTouch: '左のスティックで移動、画面をタッチでワイヤー、なぞると見回す。壁に向かって走ると登れる',
     credit: '音: Kenney, rubberduck, artisticdude, poinl, Almitory ほか（CC0）。詳しくは CREDITS.md',
     ticketHead: '御伝票', shiftLeft: 'シフト残り', toShop: '店に戻って受け取る', shopName: '宙吊軒',
     floor: (p, f) => `${p}（${f}階の窓）`, dist: d => `あと${d}m`, sec: s => `${s}秒`, late: s => `${s}秒遅れ`,
     pause: '休憩', paused: '休憩中', resume: '戻る', quit: '店を出る（やめる）',
-    reel: '巻取', jump: '跳ぶ', throw: '投げる', tooFar: '届かない',
+    jump: '跳ぶ', throw: '投げる', tooFar: '届かない', bumpPed: '<small>通行人</small>ちょっと！ 前見て！', bumpCar: '<small>運転手</small>危ないやろ！ 歩道歩け！',
     spill: { 25: 'スープが揺れてる', 50: '半分こぼれた', 75: 'ほとんど残ってない' },
     pickup: (d, p, f) => `はい次、${d}。${p}の${f}階や`,
-    custLine: { '事務所': '昼休み終わる前に頼むで', '美容室': 'パーマ中で動かれへん。窓まで頼むわ', '法律事務所': '一滴でもこぼれてたら訴えるからな', '歯医者': '麻酔切れる前に食べたいねん', 'ネイルサロン': '爪乾かしてるから、そっと渡してな', '設計事務所': '徹夜明けや。熱いうちに頼む', '塾': '休み時間10分しかないねん', '探偵事務所': '張り込み中や。目立たんように来てくれ', '会議室': '会議の前に来てや。遅れたら気まずい', 'ヨガ教室': 'ゆっくりでええ。でも麺はのばさんといて' },
+    custLine: { '事務所': '昼休み終わる前に頼むで', '美容室': 'パーマ中で動かれへん。窓まで頼むわ', '法律事務所': '一滴でもこぼれてたら訴えるからな', '歯医者': '麻酔切れる前に食べたいねん', 'ネイルサロン': '爪乾かしてるから、そっと渡してな', '設計事務所': '徹夜明けや。熱いうちに頼む', '塾': '休み時間10分しかないねん', '探偵事務所': '張り込み中や。目立たんように来てくれ', '会議室': '会議の前に来てや。遅れたら気まずい', 'ヨガ教室': 'ゆっくりでええ。でも麺はのばさんといて', 'お宅': '子どもが寝とるから、玄関やなくて2階の窓に頼むわ' },
     tooFast: '速すぎて受け取れん！', lateMsg: '遅れてるで！',
     react: { good: '早っ！ 熱いうちにいただきます', ok: 'ちょっと減ってるけど、まあええわ', throwOk: '窓から入ってきた！？', mess: 'スープどこいったん？ もう頼まん', late: 'のびのびやん…', drop: '下に落ちたで！' },
     tip: y => `チップ ${y}円`, noTip: 'チップなし', allDone: '全部届けた！', timeUp: 'シフト終わり',
@@ -54,21 +59,21 @@ const T = {
     start: 'Clock in', how: 'How to work', lang: 'JP', more: 'More games', muteOn: 'Sound on', muteOff: 'Muted', loading: 'Prepping',
     howTitle: 'Delivery rules', ok: 'Got it',
     howItems: [
-      '<b>Tap</b> a building to shoot a wire. <b>Reel</b> to swing faster',
+      '<b>Tap</b> a building to shoot a wire. The big button aims ahead for you',
       'The faster you go, <b>the more soup you lose</b>. Late is bad too',
       'Ease up to the window with the red lantern to <b>hand it over</b>. <b>Throwing</b> is a gamble'
     ],
-    hintWire: '<small>Tip</small>Tap a building to shoot a wire', hintWirePc: '<small>Tip</small>Click a building (or E) to wire. Shift to reel',
-    keysPc: 'PC: WASD / arrows move · click to wire (or E) · Space jump · Shift reel · F throw · drag to look',
+    hintWire: '<small>Tip</small>Tap a building to shoot a wire', hintWirePc: '<small>Tip</small>Click a building (or E) to wire',
+    keysPc: 'PC: WASD / arrows move · click to wire (E auto-aims) · Space jump · F throw · drag to look',
     keysTouch: 'Left stick moves, tap to wire, drag to look around. Run into a wall to climb it',
     credit: 'Sounds: Kenney, rubberduck, artisticdude, poinl, Almitory and others (CC0). See CREDITS.md',
     ticketHead: 'ORDER', shiftLeft: 'Shift', toShop: 'Back to the shop', shopName: 'Chuzuri-ken',
     floor: (p, f) => `${p} (floor ${f} window)`, dist: d => `${d} m`, sec: s => `${s}s`, late: s => `${s}s late`,
     pause: 'Break', paused: 'On break', resume: 'Back to work', quit: 'Leave (quit)',
-    reel: 'Reel', jump: 'Jump', throw: 'Throw', tooFar: 'Too far',
+    jump: 'Jump', throw: 'Throw', tooFar: 'Too far', bumpPed: '<small>Passer-by</small>Hey! Watch it!', bumpCar: '<small>Driver</small>Get off the road!',
     spill: { 25: 'Soup is sloshing', 50: 'Half of it is gone', 75: 'Almost nothing left' },
     pickup: (d, p) => `Next: ${d} for the ${p}`,
-    custLine: { '事務所': 'Before my lunch break ends, please', '美容室': 'I am mid-perm. Bring it to the window', '法律事務所': 'One drop spilled and I will sue', '歯医者': 'I want to eat before the anesthetic wears off', 'ネイルサロン': 'My nails are drying. Hand it over gently', '設計事務所': 'Up all night. Bring it hot', '塾': 'I only have a 10-minute break', '探偵事務所': 'I am on a stakeout. Do not make a scene', '会議室': 'Before the meeting starts, please', 'ヨガ教室': 'Take it easy. Just do not let the noodles go soggy' },
+    custLine: { '事務所': 'Before my lunch break ends, please', '美容室': 'I am mid-perm. Bring it to the window', '法律事務所': 'One drop spilled and I will sue', '歯医者': 'I want to eat before the anesthetic wears off', 'ネイルサロン': 'My nails are drying. Hand it over gently', '設計事務所': 'Up all night. Bring it hot', '塾': 'I only have a 10-minute break', '探偵事務所': 'I am on a stakeout. Do not make a scene', '会議室': 'Before the meeting starts, please', 'ヨガ教室': 'Take it easy. Just do not let the noodles go soggy', 'お宅': 'The baby is asleep. Bring it to the upstairs window, not the door' },
     tooFast: 'Too fast to grab it!', lateMsg: 'You are late!',
     react: { good: 'Already? Still hot, thanks!', ok: 'A bit spilled, but fine', throwOk: 'It flew in the window!?', mess: 'Where did the soup go?', late: 'The noodles are soggy…', drop: 'It fell on the street!' },
     tip: y => `Tip ¥${y}`, noTip: 'No tip', allDone: 'All delivered!', timeUp: 'Shift over',
@@ -123,7 +128,7 @@ sun.shadow.normalBias = 0.04; sun.shadow.bias = -0.0004
 scene.add(sun, sun.target)
 const hemi = new THREE.HemisphereLight(0xc4d8ff, 0x6a5a48, 1.8)
 scene.add(hemi)
-loadSky(renderer, scene, sun, () => { hemi.intensity = 0.4 })
+loadSky(renderer, scene, sun, () => { hemiBase = 0.4; hemi.intensity = 0.4; dayK = -1 })
 const camera = new THREE.PerspectiveCamera(64, 1, 0.3, 2400)
 const world = createWorld('city')
 const built = buildScene(scene, world)
@@ -158,6 +163,37 @@ const shopGroup = new THREE.Group()
   shopGroup.position.set(S.x + 6, 0, S.z)
 }
 scene.add(shopGroup)
+// 店と一軒家の当たり判定・掛け点、通り沿いの電柱と街灯（2026-11-02 本人「通り抜けできてまう」「一軒家も」「電柱とか掛けられる場所を」）
+const town = addTown(world, JOB.shop)
+const poles3d = buildPoles3d(scene, buildPoles(world, JOB.shop))
+const houses3d = buildHouses3d(scene, town.houses)
+const carsDraw = trafficPool(scene, LOW), pedsDraw = pedPool(scene, LOW)
+let street = createStreet(world, 1)
+// 昼→夕方→夜（2026-11-02 本人「時間が経つとだんだん背景も暗くなっていくように」）。空の上に色の膜を重ねる
+const skyTint = new THREE.Mesh(new THREE.SphereGeometry(1800, 24, 12), new THREE.MeshBasicMaterial({ color: 0xff8a3c, side: THREE.BackSide, transparent: true, opacity: 0, depthWrite: false, fog: false }))
+skyTint.renderOrder = -1; scene.add(skyTint)
+const DAY = { fog: new THREE.Color(0xc9d6e2), dusk: new THREE.Color(0xd99a6a), night: new THREE.Color(0x141c33), sunDay: new THREE.Color(0xfff1dc), sunDusk: new THREE.Color(0xffa060), sunNight: new THREE.Color(0x9fb4ff), tDusk: new THREE.Color(0xff7a30), tNight: new THREE.Color(0x0b1430) }
+const _c1 = new THREE.Color()
+let dayK = -1, hemiBase = 1.8
+function applyDayTime(k) {
+  if (Math.abs(k - dayK) < 0.002) return
+  dayK = k
+  const dusk = Math.max(0, Math.min(1, (k - 0.35) / 0.3)), night = Math.max(0, Math.min(1, (k - 0.65) / 0.3))
+  _c1.copy(DAY.fog).lerp(DAY.dusk, dusk).lerp(DAY.night, night); scene.fog.color.copy(_c1)
+  sun.color.copy(DAY.sunDay).lerp(DAY.sunDusk, dusk).lerp(DAY.sunNight, night)
+  sun.intensity = 3.0 - dusk * 1.3 - night * 1.35
+  hemi.intensity = hemiBase * (1 - night * 0.45)
+  scene.environmentIntensity = 1 - dusk * 0.25 - night * 0.45
+  scene.backgroundIntensity = 1 - dusk * 0.2 - night * 0.55
+  skyTint.material.color.copy(DAY.tDusk).lerp(DAY.tNight, night)
+  skyTint.material.opacity = dusk * 0.5 * (1 - night) + night * 0.8
+  renderer.toneMappingExposure = 1 + night * 0.18   // 真っ黒にしない
+  const lit = Math.max(0, Math.min(1, (k - 0.55) / 0.2))
+  poles3d.bulbMat.emissiveIntensity = lit * 2.4
+  houses3d.winMat.emissiveIntensity = lit * 1.6
+  shopGroup.children.forEach(o => { if (o.isPointLight) o.intensity = 6 + lit * 10 })
+  carLights(lit)
+}
 // 届け先: 赤い提灯＋明かりのついた窓＋手を振る客
 const custTex = canvasTex(128, 160, (x, w, h) => {
   x.fillStyle = '#2a2420'
@@ -195,7 +231,7 @@ flying.visible = false; scene.add(flying)
 const ropeMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1, 5).rotateX(Math.PI / 2).translate(0, 0, 0.5), new THREE.MeshBasicMaterial({ color: 0x2b2b2b }))
 ropeMesh.visible = false; scene.add(ropeMesh)
 // 狙い（キーボードの E で掛かる所）
-const aimMark = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.75, 24), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthTest: false }))
+const aimMark = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.75, 24), new THREE.MeshBasicMaterial({ color: 0xff9a3c, transparent: true, opacity: 0.9, depthTest: false }))
 aimMark.renderOrder = 5; aimMark.visible = false; scene.add(aimMark)
 
 // ---------------------------------------------------------------- 状態
@@ -203,7 +239,6 @@ let mode = 'title'        // title | play | result
 let me = null, sh = null, model = null
 let demo = null           // タイトルの後ろで飛ぶ CPU
 let paused = false, dbgPause = false, endAt = 0, photo = null, photoScore = -1
-let reelOn = false
 const touchMode = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
 document.body.classList.toggle('is-touch', touchMode)
 const cam = { hd: -Math.PI / 2, pitch: 0.15, userT: -1e9, pos: new THREE.Vector3(), off: new THREE.Vector3(-6, 3, 0), look: new THREE.Vector3(), lookOff: new THREE.Vector3(), fov: 64 }
@@ -225,7 +260,6 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyE') pendingWire = { at: null, key: true }
   if (e.code === 'Space') { press.jump = true; e.preventDefault() }
   if (e.code === 'KeyF') press.throw = true
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') setReel(!reelOn)
   if (e.code === 'Escape' || e.code === 'KeyP') setPause(!paused)
 })
 addEventListener('keyup', e => keys.delete(e.code))
@@ -260,44 +294,53 @@ function aimAt(cx, cy) {
 // スティックとボタン
 const stick = { x: 0, y: 0, id: null }
 {
-  const el = $('stick'), knob = el.querySelector('.knob')
+  // 左の広い範囲のどこを触ってもスティックが出る（WIRE ESCAPE と同じ）
+  const zone = $('stickZone'), el = $('stick'), knob = el.querySelector('.knob')
+  let ox = 0, oy = 0
+  const R = () => el.getBoundingClientRect().width / 2
   const upd = e => {
-    const r = el.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2
-    let dx = (e.clientX - cx) / (r.width / 2), dy = (e.clientY - cy) / (r.height / 2)
+    let dx = (e.clientX - ox) / R(), dy = (e.clientY - oy) / R()
     const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l }
     stick.x = dx; stick.y = dy; knob.style.transform = `translate(${dx * 36}px,${dy * 36}px)`
   }
-  el.addEventListener('pointerdown', e => { Snd.init(); stick.id = e.pointerId; try { el.setPointerCapture(e.pointerId) } catch (er) {} upd(e) })
-  el.addEventListener('pointermove', e => { if (e.pointerId === stick.id) upd(e) })
-  const end = e => { if (e.pointerId !== stick.id) return; stick.id = null; stick.x = stick.y = 0; knob.style.transform = '' }
-  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end)
+  zone.addEventListener('pointerdown', e => {
+    Snd.init(); if (stick.id != null) return
+    stick.id = e.pointerId; try { zone.setPointerCapture(e.pointerId) } catch (er) {}
+    const zr = zone.getBoundingClientRect(); ox = e.clientX; oy = e.clientY
+    el.style.left = (ox - zr.left) + 'px'; el.style.top = (oy - zr.top) + 'px'; el.classList.add('held'); upd(e)
+  })
+  zone.addEventListener('pointermove', e => { if (e.pointerId === stick.id) upd(e) })
+  const end = e => { if (e.pointerId !== stick.id) return; stick.id = null; stick.x = stick.y = 0; knob.style.transform = ''; el.classList.remove('held'); el.style.left = el.style.top = '' }
+  zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end)
   for (const b of document.querySelectorAll('.tbtn')) b.addEventListener('pointerdown', e => {
     e.preventDefault(); Snd.init()
     const k = b.dataset.k
-    if (k === 'reel') setReel(!reelOn)
+    if (k === 'wire') pendingWire = { at: null, key: true }   // 大きいボタン: 前の上へ自動で（ワイヤー中なら外す）
     else press[k] = true
   })
 }
-function setReel(on) {
-  reelOn = !!on && !!(me && me.rope)
-  document.querySelector('.tbtn[data-k=reel]').classList.toggle('lit', reelOn)
-}
 function gather() {
-  let thr = 0, brk = 0, steer = 0
+  let thr = 0, brk = 0, steer = 0, wallY = null, wallX = null
   if (keys.has('KeyW') || keys.has('ArrowUp')) thr = 1
   if (keys.has('KeyS') || keys.has('ArrowDown')) brk = 1
   if (keys.has('KeyA') || keys.has('ArrowLeft')) steer -= 1
   if (keys.has('KeyD') || keys.has('ArrowRight')) steer += 1
   if (stick.id != null) {
     // スティックはカメラの向きに対して倒した方へ走る
+    // WIRE ESCAPE と同じ効き方: 倒した向き（カメラから見て）へ走る。少し倒すだけで全力
     const mag = Math.min(1, Math.hypot(stick.x, stick.y))
-    if (mag > 0.2) {
+    if (mag > 0.15) {
       const want = cam.hd + Math.atan2(-stick.x, -stick.y)
       let d = want - me.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2
-      steer = Math.max(-1, Math.min(1, -d * 2.4)); thr = Math.abs(d) > 2.4 ? 0.3 : mag
+      steer = Math.max(-1, Math.min(1, -d * 2.5)); thr = Math.max(thr, Math.min(1, mag * 1.3))
+    }
+    // 壁に張り付いている時: スティックの上下で登り降り、左右で壁沿いに横へ（画面で見た左右に合わせる）
+    if (me.climbing) {
+      const cl = me.climbing, sideSign = (-Math.cos(cam.hd)) * cl.nz + Math.sin(cam.hd) * -cl.nx >= 0 ? 1 : -1
+      wallY = Math.abs(stick.y) > 0.25 ? -stick.y : 0; wallX = Math.abs(stick.x) > 0.25 ? stick.x * sideSign : 0
     }
   }
-  const inp = { throttle: thr, brake: brk, steer, jump: press.jump, boost: reelOn, wire: false }
+  const inp = { throttle: thr, brake: brk, steer, jump: press.jump, wire: false, wallY, wallX }
   if (pendingWire) { inp.wire = true; if (pendingWire.at) inp.wireAt = pendingWire.at; me._tap = pendingWire; pendingWire = null }
   const th = press.throw
   press.jump = press.throw = false
@@ -315,8 +358,8 @@ function toTitle() {
 }
 function startShift(seed = Math.floor(Math.random() * 1e6)) {
   Snd.init(); sfx('click')
-  mode = 'play'; paused = false; demo = null; reelOn = false; photo = null; photoScore = -1; endAt = 0
-  me = spawnRunner('me'); sh = createShift(world, seed); sh.seed = seed
+  mode = 'play'; paused = false; demo = null; photo = null; photoScore = -1; endAt = 0
+  me = spawnRunner('me'); sh = createShift(world, seed); sh.seed = seed; street = createStreet(world, seed)
   newModel()
   cam.hd = -Math.PI / 2; cam.pitch = 0.15; cam.userT = -1e9
   show(null); $('touch').classList.toggle('hidden', !touchMode)
@@ -397,9 +440,11 @@ function onRunnerEvent(e) {
     sfx('wire', { vol: 0.4, rate: 1.3 })
     const tp = me._tap
     if (e.far && tp && tp.sx != null) { const el = $('miss'); el.style.left = tp.sx + 'px'; el.style.top = tp.sy + 'px'; el.classList.remove('hidden'); el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; clearTimeout(el._t); el._t = setTimeout(() => el.classList.add('hidden'), 800) }
-  } else if (e.t === 'unwire') setReel(false)
+  }
   else if (e.t === 'land') { sfx('land', { vol: Math.min(1, 0.3 + e.impact / 20) }); if (e.impact > 14) { sfx('bonk', { vol: 0.5 }); fx.addShake(Math.min(0.6, e.impact / 40)) } }
   else if (e.t === 'bonk') { sfx('bonk', { vol: 0.8 }); fx.addShake(0.4) }
+  else if (e.t === 'ped') { sfx('bonk', { vol: 0.6, rate: 1.2 }); fx.addShake(0.3); say(t('bumpPed'), 1.4) }
+  else if (e.t === 'car') { sfx('bonk', { vol: 1, rate: 0.8 }); fx.addShake(0.7); say(t('bumpCar'), 1.6) }
 }
 function onShiftEvent(e) {
   log.push({ src: 's', ...e, at: +sh.t.toFixed(2) })
@@ -474,7 +519,8 @@ function updateCamera(dt, c) {
   const v = Math.hypot(c.vx, c.vz)
   let hx = Math.sin(c.yaw), hz = Math.cos(c.yaw)
   if (v > 8) { const k = c.grounded ? 0.25 : 0.45; hx = hx * (1 - k) + (c.vx / v) * k; hz = hz * (1 - k) + (c.vz / v) * k; const l = Math.hypot(hx, hz); hx /= l; hz /= l }
-  const manual = performance.now() - cam.userT < 1800
+  // スマホはカメラを自分で回す（追いかけない。WIRE ESCAPE と同じ。スティックの向きがぶれない）。PC はなぞってから 1.8 秒で後ろへ戻る
+  const manual = touchMode || performance.now() - cam.userT < 1800
   if (!manual) { cam.hd = lerpAngle(cam.hd, Math.atan2(hx, hz), 1 - Math.exp(-dt * (touchMode ? 2.2 : 5))); cam.pitch += (0.15 - cam.pitch) * (1 - Math.exp(-dt * 1.5)) }
   hx = Math.sin(cam.hd); hz = Math.cos(cam.hd)
   let back = 5.2 + Math.min(2.4, v * 0.07), up = 2.1
@@ -517,16 +563,19 @@ function stepOnce() {
   if (mode === 'play' && !paused && me && !sh.over) {
     const { inp, th } = gather()
     me.events.length = 0
+    street.update(STEP, me)
     stepRunner(me, inp, STEP, world)
+    street.collide(me)
     stepShift(sh, me, STEP, { throwNow: th })
     for (const e of me.events) onRunnerEvent(e)
     for (const e of sh.events) onShiftEvent(e)
     sh.events.length = 0
-    if (!me.rope && reelOn) setReel(false)
   } else if (mode === 'title' && demo) {
     const inp = botInput(demo.b, demo.r, demo.sh, world, STEP)
     demo.r.events.length = 0
+    street.update(STEP, demo.r)
     stepRunner(demo.r, inp, STEP, world)
+    street.collide(demo.r)
     stepShift(demo.sh, demo.r, STEP, { throwNow: !!inp.throw })
     demo.sh.events.length = 0
     if (demo.sh.over) demo.sh = createShift(world, Math.floor(Math.random() * 1000))
@@ -571,10 +620,17 @@ function render(dt) {
   if (th) { flying.position.set(th.x, th.y, th.z); flying.rotation.x += dt * 8; flying.rotation.y += dt * 5 }
   // キーボードの狙い（PCだけ）
   aimMark.visible = false
-  if (mode === 'play' && me && !me.rope && !touchMode && frameN % 4 === 0) aimMark.userData.p = findAnchor(world, me)
-  if (mode === 'play' && me && !me.rope && !touchMode && aimMark.userData.p) { const p = aimMark.userData.p; aimMark.visible = true; aimMark.position.set(p.x, p.y, p.z); aimMark.lookAt(camera.position) }
+  // 大きいボタン（E）で掛かる所に輪を出す（スマホも。WIRE ESCAPE と同じ）
+  if (mode === 'play' && me && !me.rope && frameN % 4 === 0) aimMark.userData.p = findAnchor(world, me)
+  const aimOn = mode === 'play' && me && !me.rope && !!aimMark.userData.p
+  if (aimOn) { const p = aimMark.userData.p; aimMark.visible = true; aimMark.position.set(p.x, p.y, p.z); aimMark.lookAt(camera.position); aimMark.scale.setScalar(Math.max(1, camera.position.distanceTo(aimMark.position) * 0.04)) }
+  const wb = document.querySelector('.tbtn[data-k=wire]'); if (wb && wb._aim !== aimOn) { wb._aim = aimOn; wb.classList.toggle('aim', aimOn) }
   // 風の音は速さで
   if (mode === 'play' && me) { const v3 = Math.hypot(me.vx, me.vy, me.vz); const wl = Snd.loops.wind; if (wl && wl.g) wl.g.gain.value = Math.min(0.5, Math.max(0, (v3 - 8) / 40)) }
+  // 車と通行人（カメラの近くだけ描く）、昼→夜
+  carsDraw.draw(street.traffic.cars, camera.position, dt); pedsDraw.draw(street.peds, camera.position, dt)
+  applyDayTime(mode === 'play' && sh ? Math.min(1, sh.t / JOB.shiftSec) : mode === 'result' && sh ? 1 : 0)
+  skyTint.position.copy(camera.position)
   fx.update(dt)
   fx.shake = Math.max(0, fx.shake - dt * 2.5)
   if (mode === 'play' && sh) {
@@ -594,7 +650,7 @@ window.sky = {
   dbg: {
     pause: on => { dbgPause = on }, step: n => { for (let i = 0; i < n; i++) stepOnce(); render(STEP) },
     teleport: (x, y, z, yaw) => { Object.assign(me, { x, y, z, vx: 0, vy: 0, vz: 0, rope: null, climbing: null, grounded: y < 0.1 }); if (yaw != null) me.yaw = yaw },
-    pressWire: (sx, sy) => aimAt(sx, sy), pressJump: () => { press.jump = true }, pressThrow: () => { press.throw = true }, reel: on => setReel(on),
+    pressWire: (sx, sy) => aimAt(sx, sy), pressJump: () => { press.jump = true }, pressThrow: () => { press.throw = true }, wireAuto: () => { pendingWire = { at: null, key: true } },
     keys, stick, say, setMess: m => { sh.mess = m }, target, get model() { return model }
   }
 }

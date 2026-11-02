@@ -1,7 +1,8 @@
 // CPU の出前バイト（釣り合いの検証とタイトルのデモ用）。3つの性格
 //   careful: ワイヤーを使わず、道を走って壁を登って手渡し（丁寧だが遅い）
-//   rush:    ずっとワイヤー＋巻き取り、近づいたら投げ入れる（速いが崩れる）
-//   skilled: 巻き取らずにワイヤーで近くまで行き、最後は着地して壁を登って手渡し
+//   rush:    ずっとワイヤーで全速力、近づいたら投げ入れる（速いが崩れる）
+//   skilled: ワイヤーで近くまで行き、最後は着地して壁を登って手渡し
+//   clumsy:  下手な人。skilled と同じ考えだが、反応が0.35秒遅れ、向きがぶれ、ワイヤーを掛け損ねる（3回に1回）
 import { JOB, curOrder } from './delivery.js'
 import { findAnchor } from './runner.js'
 
@@ -25,7 +26,7 @@ function route(r, goal) {
   return pts
 }
 
-export function createBot(kind) { return { kind, plan: null, idx: 0, replan: 0, wT: 0, prevW: false, prevT: false, stuck: 0, lx: 0, lz: 0 } }
+export function createBot(kind, seed = 1) { let q = seed * 9301 + 49297; return { rnd: () => ((q = (q * 9301 + 49297) % 233280) / 233280), lag: [], kind, plan: null, idx: 0, replan: 0, wT: 0, prevW: false, prevT: false, stuck: 0, lx: 0, lz: 0 } }
 
 export function botInput(b, r, sh, world, dt) {
   const o = curOrder(sh)
@@ -50,22 +51,21 @@ export function botInput(b, r, sh, world, dt) {
   inp.throttle = Math.abs(diff) > 1.6 && r.grounded ? 0.3 : 1
   // 登っていて窓の高さを過ぎたら離す（高すぎて落ちる前に）
   const dGoal = Math.hypot(goal.x - r.x, goal.z - r.z)
-  const swingOK = (b.kind === 'rush' && dGoal > 14) || (b.kind === 'skilled' && dGoal > (toShop ? 20 : 30))
+  const swingOK = (b.kind === 'rush' && dGoal > 14) || ((b.kind === 'skilled' || b.kind === 'clumsy') && dGoal > (toShop ? 45 : 30))
   b.wT += dt
   let wire = false
-  if (swingOK && !r.rope && !r.climbing && b.wT > 0.35 && (r.grounded || r.vy < -1)) {
+  b.jumpOff = Math.max(0, (b.jumpOff || 0) - dt)
+  if (swingOK && !(b.jumpOff > 0) && !r.rope && !r.climbing && b.wT > 0.35 && (r.grounded || r.vy < -1)) {
     // 行きたい向きの前の建物を狙う（人が画面の行きたい方をタッチするのと同じ）
     const v = Math.max(8, Math.hypot(r.vx, r.vz))
     const a = findAnchor(world, { ...r, yaw: want, vx: Math.sin(want) * v, vz: Math.cos(want) * v })
-    if (a) { wire = true; b.wT = 0; b.aim = a }
+    if (a && !(b.kind === 'clumsy' && b.rnd() < 0.33)) { wire = true; b.wT = 0; b.aim = a } else if (a) b.wT = 0
   }
-  if (b.kind === 'skilled' && r.rope && dGoal < 32 && r.y < 6) wire = true // 振り子の下（低い所）で外して、そっと着地する
+  if ((b.kind === 'skilled' || b.kind === 'clumsy') && r.rope && dGoal < 32 && r.y < 6) wire = true // 振り子の下（低い所）で外して、そっと着地する
   if (b.kind === 'rush' && r.rope && dGoal < 12) wire = true
   inp.wire = wire && !b.prevW; b.prevW = wire
   if (inp.wire && !r.rope && b.aim) inp.wireAt = b.aim
   b.aim = null
-  // 巻き取り
-  inp.boost = b.kind === 'rush' && !!r.rope && r.vy < 0
   // rush: 近づいたら投げる
   let th = false
   if (b.kind === 'rush' && sh.carrying) {
@@ -79,11 +79,34 @@ export function botInput(b, r, sh, world, dt) {
     }
   }
   inp.throw = th && !b.prevT; b.prevT = th
-  // 登っている途中で窓を通り過ぎたら止める
-  if (r.climbing && r.y + 1.1 > o.y + 3) inp.throttle = 0
+  if (!r.climbing) b.crawlBest = null
+  // 壁に張り付いたら、窓の高さと横位置へ這って寄る（上下左右に動ける）
+  if (r.climbing && !toShop) {
+    const cl = r.climbing, rx = cl.nz, rz = -cl.nx
+    const dy = o.y - (r.y + 1.1), dx = (o.x - r.x) * rx + (o.z - r.z) * rz
+    inp.wallY = Math.max(-1, Math.min(1, dy * 0.6)); inp.wallX = Math.max(-1, Math.min(1, dx * 0.6))
+    if (Math.abs(dy) < 0.4) inp.wallY = 0
+    if (Math.abs(dx) < 0.4) inp.wallX = 0
+    // 壁の角や別の建物で横へ進めない時は、跳んで離れてやり直す
+    // 窓に近づけていない（角・別の建物・別の面）なら、跳んで離れてやり直す
+    const dW = Math.hypot(o.x - r.x, o.y - (r.y + 1.1), o.z - r.z)
+    if (b.crawlBest == null || dW < b.crawlBest - 0.3) { b.crawlBest = dW; b.crawlT = 0 } else b.crawlT = (b.crawlT || 0) + dt
+    if (b.crawlT > 1.2) { inp.jump = true; b.crawlT = 0; b.crawlBest = null; b.replan = 0; b.jumpOff = 1.6 }
+  }
+  // 渡し終えて壁に張り付いている時は、壁から離れて降りる（壁を登り続けて戻れなくなっていた）
+  if (toShop && r.climbing) { inp.throttle = 0; inp.wire = false; inp.jump = !b.prevJ; b.prevJ = inp.jump } else b.prevJ = false   // 張り付きは止まるだけなので、跳んで離れる
   // 詰まったら跳ぶ
   b.stuck = Math.hypot(r.x - b.lx, r.z - b.lz) < 0.05 && !r.climbing ? b.stuck + dt : 0
   b.lx = r.x; b.lz = r.z
   if (b.stuck > 1.2) { inp.jump = true; b.stuck = 0; b.replan = 0 }
+  if (b.kind === 'clumsy') {
+    // 反応が遅い（0.35秒前の判断で動く）・向きがぶれる
+    inp.steer = Math.max(-1, Math.min(1, inp.steer + (b.rnd() - 0.5) * 0.8))
+    b.lag.push(inp); const n = Math.round(0.35 / dt)
+    if (b.lag.length <= n) return { throttle: 0, steer: 0 }
+    const old = b.lag.shift()
+    if (toShop && r.climbing) return { ...old, throttle: 0, wire: false, jump: inp.jump }   // 壁から離れるのは遅れずに（人も手を離すだけ）
+    return { ...old, wireAt: old.wireAt }
+  }
   return inp
 }

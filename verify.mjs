@@ -4,7 +4,9 @@ import { spawn, execFileSync } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { MUTE_LAUNCH, muteContext } from './mute.mjs'
 import { createWorld } from './shared/track.js'
-import { createRunner, stepRunner, RUN } from './shared/runner.js'
+import { createRunner, stepRunner, RUN, rayHit } from './shared/runner.js'
+import { addTown } from './shared/town.js'
+import { createStreet, buildPoles } from './shared/street.js'
 import { JOB, createShift, stepShift, makeTargets } from './shared/delivery.js'
 const ROOT = import.meta.dirname
 mkdirSync(ROOT + '/shots', { recursive: true })
@@ -56,36 +58,91 @@ const fit = q => q.evaluate(() => {
 
 // ---------------------------------------------------------------- 仕組み（node だけ）
 const world = createWorld('city')
-await t('ワイヤー: 届く距離は35m。遠い所を狙うと外れて、自動で別の所にも掛からない', () => {
+await t('ワイヤー: 届く距離は75m。遠すぎる所を狙うと、その向きで届く所に掛かるか×（75mより遠くには掛からない）', () => {
   const r = createRunner({ id: 'a', spawn: { x: 0, y: 0, z: 700, yaw: 0 } })
-  stepRunner(r, { wire: true, wireAt: { x: 18, y: 30, z: 760 } }, 1 / 60, world)
-  const miss = r.events.find(e => e.t === 'wireMiss')
-  expect(!r.rope && miss && miss.far, JSON.stringify(r.events)); return { d: Math.round(miss.d) }
+  stepRunner(r, { wire: true, wireAt: { x: 18, y: 30, z: 900 } }, 1 / 60, world)
+  const miss = r.events.find(e => e.t === 'wireMiss'), w = r.events.find(e => e.t === 'wire')
+  const d = w ? Math.hypot(w.x - r.x, w.y - r.y, w.z - r.z) : 0
+  expect((w && d <= RUN.wireRange + 2) || (!r.rope && miss && miss.far), JSON.stringify(r.events)); return { got: !!w, d: Math.round(d) }
 })
-await t('ワイヤー: 35m以内なら掛かる', () => {
+await t('ワイヤー: 75m以内なら掛かる', () => {
   const r = createRunner({ id: 'a', spawn: { x: 0, y: 0, z: 700, yaw: 0 } })
   stepRunner(r, { wire: true, wireAt: { x: 18, y: 18, z: 715 } }, 1 / 60, world)
   expect(r.rope, JSON.stringify(r.events)); return { len: +r.rope.len.toFixed(1) }
 })
-await t('巻き取り: 引き寄せない（重力が残る）。縮めるだけで振り子が速くなる', () => {
+await t('巻き取り: ボタンは無い（押しても同じ）。振り子の下で自動で少しずつ縮むだけで、引き寄せない', () => {
   const mk = () => { const r = createRunner({ id: 'a', spawn: { x: 0, y: 12, z: 700, yaw: 0 } }); r.grounded = false; r.vz = 12; r.rope = { x: 0, y: 30, z: 712, len: 21, t: 0 }; return r }
   const a = mk(), b = mk()
-  let minVyA = 0
-  for (let i = 0; i < 40; i++) { stepRunner(a, { boost: true }, 1 / 60, world); stepRunner(b, {}, 1 / 60, world); minVyA = Math.min(minVyA, a.vy) }
+  for (let i = 0; i < 40; i++) { stepRunner(a, { boost: true }, 1 / 60, world); stepRunner(b, {}, 1 / 60, world) }
   const va = Math.hypot(a.vx, a.vy, a.vz), vb = Math.hypot(b.vx, b.vy, b.vz)
   expect(a.rope && b.rope, 'rope lost')
-  expect(a.rope.len < b.rope.len - 2, `len ${a.rope.len} vs ${b.rope.len}`)
-  expect(va > vb + 0.5, `speed ${va} vs ${vb}`)
-  // 直線で引っぱる（旧仕様）なら 18m/s で一直線。新仕様は自由落下と同じく下へも落ちる
+  expect(Math.abs(a.rope.len - b.rope.len) < 1e-6 && Math.abs(va - vb) < 1e-6, `boost が効いている ${a.rope.len} vs ${b.rope.len}`)
+  expect(b.rope.len < 21 - 0.3 && b.rope.len > 21 - 8, 'auto reel ' + b.rope.len)
   expect(va < 30, 'too fast ' + va)
-  return { lenReel: +a.rope.len.toFixed(1), lenFree: +b.rope.len.toFixed(1), vReel: +va.toFixed(1), vFree: +vb.toFixed(1) }
+  return { len: +b.rope.len.toFixed(1), v: +vb.toFixed(1) }
 })
-await t('届け先: 5件・店から70〜210m・窓の前が広い道・近い順', () => {
+await t('スイングの方が走るより速い（6秒で進む距離）', () => {
+  const run = (wire) => { const r = createRunner({ id: 'a', spawn: { x: 0, y: 0, z: 300, yaw: 0 } }); let t = 0; while (t < 6) { stepRunner(r, { throttle: 1, wire: wire && Math.floor(t * 4) % 3 === 0 && !r.rope }, 1 / 60, world); t += 1 / 60 } return Math.hypot(r.x, r.z - 300) }
+  const runD = run(false), swingD = run(true)
+  expect(swingD > runD * 1.4, JSON.stringify({ runD, swingD })); return { run: Math.round(runD), swing: Math.round(swingD) }
+})
+await t('壁に張り付いて止まれる・左右上下に這える・跳ぶと離れる', () => {
+  const b = world.colliders.find(o => o.kind === 'building' && o.y1 > 20 && !o.small && Math.abs(o.cx - 30) < 300 && Math.abs(o.cz - 842) < 300 && o.hw > 10)
+  const r = createRunner({ id: 'a', spawn: { x: b.cx, y: 0, z: b.cz - b.hl - 5, yaw: 0 } })
+  const run = (sec, inp) => { for (let i = 0; i < sec * 60; i++) stepRunner(r, inp, 1 / 60, world) }
+  run(1.2, { throttle: 1 }); const c0 = !!r.climbing, y0 = r.y
+  run(1, {}); const hang = !!r.climbing && Math.abs(r.y - y0) < 0.5
+  let x = r.x; run(0.8, { wallX: 1 }); const right = Math.abs(r.x - x)
+  x = r.x; run(0.8, { wallX: -1 }); const left = Math.abs(r.x - x)
+  let y = r.y; run(0.5, { wallY: -1 }); const down = y - r.y
+  y = r.y; run(0.4, { wallY: 1 }); const up = r.y - y
+  const on = !!r.climbing; run(0.1, { jump: true })
+  const res = { c0, hang, right: +right.toFixed(1), left: +left.toFixed(1), down: +down.toFixed(1), up: +up.toFixed(1), off: !r.climbing }
+  expect(c0 && hang && right > 2 && left > 2 && down > 1.5 && up > 1.5 && on && !r.climbing, JSON.stringify(res)); return res
+})
+await t('店（宙吊軒）は通り抜けできない・店と一軒家にワイヤーが掛かる', () => {
+  addTown(world, JOB.shop)
+  const sp = world.town.shop
+  const r = createRunner({ id: 'a', spawn: { x: sp.cx - sp.hw - 4, y: 0, z: sp.cz, yaw: Math.PI / 2 } })
+  let through = false
+  for (let i = 0; i < 120; i++) { stepRunner(r, { throttle: 1, steer: 0 }, 1 / 60, world); if (Math.abs(r.x - sp.cx) < sp.hw - 0.2 && Math.abs(r.z - sp.cz) < sp.hl - 0.2 && r.y < sp.y1 - 0.3) through = true }   // 壁を登って屋根を越えるのはよい。中を通るのはだめ
+  const hit = rayHit(world, sp.cx - 20, 2, sp.cz, 1, 0.05, 0, 60)
+  const shopWire = !!hit && Math.abs(hit.x - (sp.cx - sp.hw)) < 0.6
+  const h = world.town.houses[0]
+  const r2 = createRunner({ id: 'b', spawn: { x: h.cx, y: 0, z: h.cz + h.face * (h.hl + 12), yaw: h.face > 0 ? Math.PI : 0 } })
+  stepRunner(r2, { wire: true, wireAt: { x: h.cx, y: h.y1 - 1, z: h.cz + h.face * h.hl } }, 1 / 60, world)
+  const houseWire = !!r2.rope
+  expect(!through && shopWire && houseWire && world.town.houses.length >= 3, JSON.stringify({ through, x: r.x, shopWire, houseWire, houses: world.town.houses.length })); return { houses: world.town.houses.length }
+})
+await t('電柱・街灯にワイヤーが掛かる（地面に降りずにつなげる掛け点）', () => {
+  const poles = buildPoles(world, JOB.shop)
+  const q = poles.find(p => Math.hypot(p.x - 30, p.z - 842) < 120)
+  const r = createRunner({ id: 'a', spawn: { x: q.x + 15, y: 0, z: q.z, yaw: -Math.PI / 2 } })
+  stepRunner(r, { wire: true, wireAt: { x: q.x, y: q.y1 - 0.4, z: q.z } }, 1 / 60, world)
+  expect(poles.length > 200 && r.rope && Math.abs(r.rope.x - q.x) < 0.5, JSON.stringify({ n: poles.length, rope: r.rope })); return { poles: poles.length }
+})
+await t('通行人・車にぶつかると少しこぼれてよろける（空中なら当たらない）', () => {
+  const st = createStreet(world, 2)
+  const r = createRunner({ id: 'a', spawn: { x: 0, y: 0, z: 700 } })
+  st.update(1 / 60, r)
+  const p = st.peds.find(q => q.w)
+  Object.assign(r, { x: p.x + 0.3, z: p.z, y: p.y, vx: 5, vz: 0 }); r.events.length = 0
+  const pedHit = st.collide(r)
+  const c = st.traffic.cars[0]; st.cd = 0
+  Object.assign(r, { x: c.x, z: c.z, y: c.y, vx: 0, vz: 0, grounded: true, stun: 0 }); r.events.length = 0
+  const carHit = st.collide(r)
+  st.cd = 0; Object.assign(r, { x: c.x, z: c.z, y: c.y + 6 }); const air = st.collide(r)
+  const sh = createShift(world, 1); const r2 = createRunner({ id: 'b', spawn: { x: JOB.shop.x, y: 0, z: JOB.shop.z } }); stepShift(sh, r2, 1 / 60)
+  const m0 = sh.mess; r2.events = [{ t: 'ped' }]; stepShift(sh, r2, 1 / 60); const mPed = sh.mess - m0
+  const m1 = sh.mess; r2.events = [{ t: 'car' }]; stepShift(sh, r2, 1 / 60); const mCar = sh.mess - m1
+  expect(pedHit === 'ped' && carHit === 'car' && !air && mPed >= 5 && mCar >= 8 && mCar < JOB.angryMess, JSON.stringify({ pedHit, carHit, air, mPed, mCar })); return { mPed, mCar }
+})
+await t('届け先: 5件（うち1件は一軒家の2階）・店から70〜210m・窓の前が広い道・近い順', () => {
   const bad = []
   for (let s = 1; s <= 30; s++) {
     const tg = makeTargets(world, s)
     if (tg.length !== 5) bad.push(s + ':n' + tg.length)
-    for (let i = 0; i < tg.length; i++) { const o = tg[i]; if (o.dist < 70 || o.dist > 210 || world.surfaceAt(o.x + o.nx * 7, o.z + o.nz * 7) !== 'road' || (i && tg[i - 1].dist > o.dist)) bad.push(s + ':' + i) }
+    for (let i = 0; i < tg.length; i++) { const o = tg[i]; if (o.house) { if (o.dist > 210 || world.surfaceAt(o.x + o.nx * 7, o.z + o.nz * 7) !== 'road' || (i && tg[i - 1].dist > o.dist)) bad.push(s + ':h' + i); continue } if (o.dist < 70 || o.dist > 210 || world.surfaceAt(o.x + o.nx * 7, o.z + o.nz * 7) !== 'road' || (i && tg[i - 1].dist > o.dist)) bad.push(s + ':' + i) }
   }
   expect(!bad.length, bad.join(',')); return { seeds: 30 }
 })
@@ -95,17 +152,22 @@ await t('崩れ: 速く飛ぶ・強い着地は崩れる、ゆっくり歩くの
   stepShift(sh, r, 1 / 60); expect(sh.carrying, 'no pickup')
   r.vx = 3; for (let i = 0; i < 120; i++) { r.events.length = 0; stepShift(sh, r, 1 / 60) }
   const walk = sh.mess
-  r.grounded = false; r.vx = 30; for (let i = 0; i < 60; i++) { r.events.length = 0; stepShift(sh, r, 1 / 60) }
+  r.grounded = false; r.vx = 36; for (let i = 0; i < 60; i++) { r.events.length = 0; stepShift(sh, r, 1 / 60) }
   const fly = sh.mess
   r.events = [{ t: 'land', impact: 24 }]; stepShift(sh, r, 1 / 60)
   const land = sh.mess - fly
-  expect(walk === 0 && fly > 3 && land > 10, JSON.stringify({ walk, fly, land })); return { walk, fly: +fly.toFixed(1), land: +land.toFixed(1) }
+  expect(walk === 0 && fly > 1 && land > 10, JSON.stringify({ walk, fly, land })); return { walk, fly: +fly.toFixed(1), land: +land.toFixed(1) }
 })
-await t('bot: 上手い遊び方が、丁寧すぎ・速すぎの両方より稼ぐ（12日ずつ）', () => {
+await t('bot: 上手い遊び方が丁寧すぎ・速すぎより稼ぐ／下手な人も平均3件以上／飛ぶ方が走るより早く届く（12日ずつ）', () => {
   const out = execFileSync(process.execPath, ['tools/sim.mjs', '12'], { cwd: ROOT, encoding: 'utf8', timeout: 600000 })
   const avg = k => +out.match(new RegExp(k + '\\s+平均 (\\d+)'))[1]
-  const r = { careful: avg('careful'), rush: avg('rush'), skilled: avg('skilled') }
-  expect(r.skilled > r.careful && r.skilled > r.rush, JSON.stringify(r)); return r
+  const r = { careful: avg('careful'), rush: avg('rush'), skilled: avg('skilled'), clumsy: avg('clumsy') }
+  const done = k => +out.match(new RegExp(k + '\\s+平均.*?届けた 平均([\\d.]+)件'))[1]
+  r.clumsyDone = done('clumsy'); r.runSec = +out.match(/careful.*?手渡しまで 平均([\d.]+)秒/)[1]; r.flySec = +out.match(/skilled.*?手渡しまで 平均([\d.]+)秒/)[1]
+  expect(r.skilled > r.careful && r.skilled > r.rush, JSON.stringify(r))
+  expect(r.clumsyDone >= 3, '下手な人が平均3件届かない ' + JSON.stringify(r))
+  expect(r.flySec < r.runSec, '飛ぶ方が遅い ' + JSON.stringify(r))
+  return r
 })
 await t('AI臭さチェック NG 0', () => {
   const out = execFileSync(process.execPath, [process.env.HOME + '/Desktop/claudecode/_shared/ai_tells.mjs', ROOT, '--json'], { encoding: 'utf8' })
@@ -142,7 +204,7 @@ await t('出勤: 店で料理を受け取り、伝票に品名・届け先・残
   const r = await p.evaluate(() => ({ carrying: sky.sh.carrying, dish: document.getElementById('tDish').textContent, to: document.getElementById('tTo').textContent, time: document.getElementById('tTime').textContent, pick: sky.log.some(e => e.t === 'pickup') }))
   expect(r.carrying && r.pick && r.dish.length > 1 && /階/.test(r.to) && /秒/.test(r.time), JSON.stringify(r)); return r
 })
-await t('画面タッチ: 近くのビルに掛かる／遠すぎると×が出て掛からない', async () => {
+await t('画面タッチ: 近くのビルに掛かる／遠すぎる所は、その向きの届く所に掛かるか×', async () => {
   const r = await p.evaluate(() => {
     const me = sky.me
     sky.dbg.teleport(0, 0, 700, 0); sky.dbg.step(30)
@@ -159,9 +221,10 @@ await t('画面タッチ: 近くのビルに掛かる／遠すぎると×が出�
     sky.log.length = 0
     sky.dbg.pressWire(far.sx, far.sy); sky.dbg.step(2)
     const miss = sky.log.find(e => e.t === 'wireMiss')
-    return { gotNear, lenNear: Math.round(lenNear), near, farRope: !!me.rope, miss: miss && miss.far, missShown: !document.getElementById('miss').classList.contains('hidden') }
+    const farLen = me.rope ? Math.hypot(me.rope.x - me.x, me.rope.y - me.y, me.rope.z - me.z) : 0
+    return { gotNear, lenNear: Math.round(lenNear), near, farRope: !!me.rope, farLen: Math.round(farLen), miss: miss && miss.far, missShown: !document.getElementById('miss').classList.contains('hidden') }
   })
-  expect(r.gotNear && r.lenNear <= 36 && !r.farRope && r.miss && r.missShown, JSON.stringify(r)); return r
+  expect(r.gotNear && r.lenNear <= 76 && ((r.farRope && r.farLen <= 77) || (r.miss && r.missShown)), JSON.stringify(r)); return r
 })
 await t('手渡し: 窓の前でゆっくり寄ると届く。チップと客の一言が出る', async () => {
   const r = await p.evaluate(() => {
@@ -192,7 +255,7 @@ await t('投げ入れ: 速いまま投げると窓に入る（崩れは増える
   const r = await p.evaluate(() => {
     const o = sky.sh.targets[sky.sh.idx]; sky.log.length = 0
     const yaw = Math.atan2(-o.nx, -o.nz)
-    sky.dbg.teleport(o.x + o.nx * 5, o.y - 1.3, o.z + o.nz * 5, yaw); Object.assign(sky.me, { vx: -o.nx * 14, vz: -o.nz * 14, vy: 0, grounded: false })
+    sky.dbg.teleport(o.x + o.nx * 7.5, o.y - 1.3, o.z + o.nz * 7.5, yaw); Object.assign(sky.me, { vx: -o.nx * 14, vz: -o.nz * 14, vy: 0, grounded: false })
     sky.dbg.pressThrow(); sky.dbg.step(30)
     return sky.log.find(e => e.t === 'deliver')
   })
@@ -274,6 +337,17 @@ await t('WebKit: スティックで走る', async () => {
   const x1 = await wp.evaluate(() => [sky.me.x, sky.me.z])
   const d = Math.hypot(x1[0] - x0[0], x1[1] - x0[1])
   expect(d > 3, d); return { moved: +d.toFixed(1) }
+})
+await t('WebKit: 巻き取りボタンが無い・大きいワイヤーボタンで前の上へ掛かる（WIRE ESCAPE と同じ並び）', async () => {
+  const r = await wp.evaluate(async () => {
+    const reel = !!document.querySelector('.tbtn[data-k=reel]')
+    sky.dbg.teleport(0, 0, 700, 0); await new Promise(f => setTimeout(f, 300))
+    const b = document.querySelector('.tbtn[data-k=wire]'), rc = b.getBoundingClientRect()
+    b.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 9, clientX: rc.x + 10, clientY: rc.y + 10, bubbles: true, pointerType: 'touch' }))
+    await new Promise(f => setTimeout(f, 250))
+    return { reel, rope: !!sky.me.rope, right: innerWidth - rc.right, bottom: innerHeight - rc.bottom, size: rc.width }
+  })
+  expect(!r.reel && r.rope && r.right < 40 && r.bottom < 40 && r.size >= 80, JSON.stringify(r)); return r
 })
 await t('WebKit: エラーなし', async () => { expect(wp.errs.length === 0, wp.errs.join('|')) })
 await wb.close()
