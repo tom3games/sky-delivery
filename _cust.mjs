@@ -14,7 +14,7 @@ const p = await ctx.newPage(); const errs = []
 p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()) })
 await p.goto(`http://localhost:${PORT}/`); await p.waitForFunction(() => window.__skyReady, null, { timeout: 20000 })
 await p.waitForTimeout(2500)
-await p.evaluate(() => { sky.start(5); sky.dbg.pause(true); sky.dbg.teleport(sky.JOB.pick.near.x, 0, sky.JOB.pick.near.z); sky.dbg.step(2) })
+await p.evaluate(() => { sky.start(5); sky.dbg.pause(true); sky.dbg.teleport(sky.JOB.pick.x, 0, sky.JOB.pick.z); sky.dbg.step(2) })
 const out = {}
 for (const type of (process.argv[2] || 'normal,duf,polite,coins,photo,net').split(',')) {
   out[type] = await p.evaluate(([tp, dist]) => { const r = sky.dbg.lookAtWindow(tp, dist); sky.sh.near = true; sky.dbg.render(40); return r }, [type, +(process.env.DIST || 6)])

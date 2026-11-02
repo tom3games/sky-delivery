@@ -11,7 +11,7 @@ await p.goto('http://localhost:5395/'); await p.waitForFunction(() => window.__s
 await p.evaluate(() => sky.start(5)); await p.waitForTimeout(800)
 await p.evaluate(() => {
   sky.dbg.pause(true)
-  sky.dbg.teleport(sky.JOB.pick.far.x, 0, sky.JOB.pick.far.z); sky.dbg.step(2)
+  sky.dbg.teleport(sky.JOB.pick.x, 0, sky.JOB.pick.z); sky.dbg.step(2)
   const o = sky.sh.cur, me = sky.me
   o.cust = 'duf'   // 窓にはデュフフの人
   // 窓の斜め前、少し下でワイヤーにぶら下がって窓へ振り上がる途中

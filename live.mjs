@@ -21,13 +21,13 @@ for (const [name, bt, opts] of [['chromium', chromium, {}], ['webkit', webkit, {
   await p.waitForTimeout(800)
   const flow = await p.evaluate(() => {
     sky.dbg.pause(true); sky.dbg.step(2)
-    const offers = !!(sky.sh.offers && sky.sh.offers.near && sky.sh.offers.far)
-    sky.dbg.teleport(sky.JOB.pick.far.x, 0, sky.JOB.pick.far.z); sky.dbg.step(2)
-    const picked = sky.sh.carrying && sky.sh.cur.tier === 'far'
+    const offers = !!sky.sh.offer, tier = sky.sh.offer && sky.sh.offer.tier
+    sky.dbg.teleport(sky.JOB.pick.x, 0, sky.JOB.pick.z); sky.dbg.step(2)
+    const picked = sky.sh.carrying && sky.sh.cur.tier === tier
     const o = sky.sh.cur; sky.dbg.teleport(o.x + o.nx * 2, o.y - 1.1, o.z + o.nz * 2); sky.dbg.step(2)
-    const delivered = sky.sh.results.length === 1, next = !!sky.sh.offers
+    const delivered = sky.sh.results.length === 1, next = !!sky.sh.offer, air = sky.air.crows.length
     sky.dbg.step(60 * (sky.JOB.shiftSec + 2)); sky.dbg.pause(false)
-    return { offers, picked, delivered, next }
+    return { offers, picked, delivered, next, air }
   })
   await p.waitForTimeout(2500)
   const res = await p.evaluate(() => ({ mode: sky.mode, net: window.__lastNet, mute: window.__muteOk() }))
