@@ -1,6 +1,7 @@
 // ビルの外壁。実写の壁（Poly Haven, CC0）に窓・店先・看板を描いた1枚のアトラスを、全部のビルで使い回す（描画は1回）。
-// アトラスは 横4 x 縦3 マス:
-//   上の段 = 上の階（幅 6m x 高さ 7.2m = 2部屋 x 2階）、中の段 = 1階の店先（6m x 4.5m）、下の段 = 看板（縦看板2つ + 横長の屋上広告）
+// アトラスは 横4 x 縦4 マス:
+//   1段目 = 上の階（幅 6m x 高さ 7.2m = 2部屋 x 2階）、2・3段目 = 1階の店先（6m x 4.5m、8種）、4段目 = 看板（縦看板2つ + 横長の屋上広告）
+//   2026-11-02 外部レビュー「OPEN とラーメンが交互に並ぶ」で店先を4種から8種に増やした
 // 型: 0 事務所（コンクリート板）/ 1 タイル張りのマンション / 2 ガラスのビル / 3 レンガ
 import * as THREE from 'three'
 import { Q } from './quality.js'
@@ -16,7 +17,7 @@ const WALLS = {
 
 export function createFacade() {
   const S = Q.tex === 'tex512' ? 1024 : 2048
-  const cw = S / 4, ch = S / 3
+  const cw = S / 4, ch = S / 4
   const mk = () => { const c = document.createElement('canvas'); c.width = c.height = S; return c }
   const cv = { a: mk(), n: mk(), r: mk(), e: mk() }
   const g = { a: cv.a.getContext('2d'), n: cv.n.getContext('2d'), r: cv.r.getContext('2d'), e: cv.e.getContext('2d') }
@@ -138,7 +139,7 @@ export function createFacade() {
     cell(0, 1, UP_W, GF_H)
     wall('plaster', 0, 0, UP_W, GF_H, '#cfc8bc', 220)
     win(0.3, 0.05, 5.4, 3.1, { frame: '#3a3f46', glass: ['#9fb0bd', '#3a4652'], lit: '#6a5638', depth: 0.06 })
-    band(0, 3.45, UP_W, 0.8, '#1f5d8c'); text('OPEN', 3, 3.85, 0.5, '#ffffff')
+    band(0, 3.45, UP_W, 0.8, '#1f5d8c'); text('クリーニング', 3, 3.85, 0.46, '#ffffff')
     endCell()
     // 1 シャッター
     cell(1, 1, UP_W, GF_H)
@@ -147,7 +148,7 @@ export function createFacade() {
     wall('iron', 0.3, 0, 5.4, 3.3, '#9aa0a6', 150, '#c4c8cc')
     g.a.restore(); g.n.restore()
     band(0.2, 3.3, 5.6, 0.25, '#7b8086')
-    band(0, 3.6, UP_W, 0.75, '#b8402e'); text('ラーメン', 3, 3.98, 0.48, '#fff6e0')
+    band(0, 3.6, UP_W, 0.75, '#3b3230'); text('酒 まるや', 3, 3.98, 0.48, '#f2e2b8')
     endCell()
     // 2 ロビー: 石張りとガラスの扉
     cell(2, 1, UP_W, GF_H)
@@ -163,19 +164,46 @@ export function createFacade() {
     text('CAFE', 3, 4.15, 0.36, '#2f7a4a', { glow: false })
     endCell()
 
+    // 4 町のコンビニ: 白い壁に緑と橙の帯
+    cell(0, 2, UP_W, GF_H)
+    wall('plaster', 0, 0, UP_W, GF_H, '#eeeeea', 230)
+    win(0.25, 0.05, 5.5, 3.0, { frame: '#cfd3d6', glass: ['#c8d6de', '#55636e'], lit: '#e8e0c8', depth: 0.05 })
+    band(0, 3.2, UP_W, 0.22, '#3a8a4a'); band(0, 3.42, UP_W, 0.1, '#e07a2a'); text('まちマート', 3, 3.95, 0.42, '#3a8a4a', { glow: false })
+    endCell()
+    // 5 薬局: 緑の看板と白い字
+    cell(1, 2, UP_W, GF_H)
+    wall('tiles', 0, 0, UP_W, GF_H, '#d8d2c6', 220)
+    win(0.4, 0.05, 5.2, 3.0, { frame: '#5c6266', glass: ['#b0c0c8', '#40505a'], lit: '#d8d0b0', depth: 0.06 })
+    band(0, 3.35, UP_W, 0.85, '#1d7a5a'); text('くすり', 3, 3.78, 0.52, '#ffffff')
+    endCell()
+    // 6 喫茶: 木の扉と小窓、えんじの日よけ
+    cell(2, 2, UP_W, GF_H)
+    wall('plaster', 0, 0, UP_W, GF_H, '#a89276', 200)
+    win(0.4, 0.05, 1.5, 2.6, { frame: '#3b2a1c', glass: ['#7a5a3a', '#2b1c12'], lit: '#8a6232', depth: 0.1 })
+    win(2.3, 0.9, 3.3, 1.8, { frame: '#3b2a1c', glass: ['#a59a88', '#3a3228'], lit: '#7a5a30', depth: 0.1 })
+    for (let i = 0; i < 6; i++) band(2.2 + i * 0.6, 2.85, 0.6, 0.55, i % 2 ? '#7a1f2a' : '#8f2a34')
+    text('喫茶 ひだまり', 3.9, 3.9, 0.38, '#3b2a1c', { glow: false })
+    endCell()
+    // 7 美容室: 黒い壁と細い白い字
+    cell(3, 2, UP_W, GF_H)
+    wall('panels', 0, 0, UP_W, GF_H, '#2c2c2e', 120, '#3a3a3c')
+    win(0.6, 0.05, 4.8, 3.2, { frame: '#111214', glass: ['#c4ccd2', '#4a525a'], lit: '#e6dcc8', depth: 0.06 })
+    text('HAIR  nico', 3, 3.85, 0.34, '#f2f2f2', { font: '300' })
+    endCell()
+
     // ---- 看板（縦看板は 1 x 4、横長の広告は 2 x 1 の比で描く）
-    cell(0, 2, 1, 4)
+    cell(0, 3, 1, 4)
     band(0, 0, 1, 4, '#c8102e'); g.e.fillStyle = '#5a0010'; g.e.fillRect(0, 0, 1, 4)
     text('ホテル', 0.5, 3.35, 0.62, '#fff4d8', { vertical: true })
     endCell()
-    cell(1, 2, 1, 4)
+    cell(1, 3, 1, 4)
     band(0, 0, 1, 4, '#13324f'); g.e.fillStyle = '#04101c'; g.e.fillRect(0, 0, 1, 4)
     text('居酒屋', 0.5, 3.35, 0.62, '#ffd23a', { vertical: true })
     endCell()
-    cell(2, 2, 2, 1, 2)
+    cell(2, 3, 2, 1, 2)
     band(0, 0, 2, 1, '#111418'); g.e.fillStyle = '#060708'; g.e.fillRect(0, 0, 2, 1)
     band(0.04, 0.06, 1.92, 0.88, '#ff5a1f')
-    text('BREAK THE ROUTE', 1, 0.62, 0.15, '#ffffff')
+    text('出前は 宙吊軒', 1, 0.62, 0.17, '#ffffff')
     text('24H 駐車場 P', 1, 0.3, 0.17, '#ffd23a')
     endCell()
   }
@@ -194,17 +222,17 @@ float fHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453)
       .replace('void main() {', `void main() {
   {
     float st = floor(vFac.z + 0.5);
-    vec2 cs = vec2(0.25, 1.0 / 3.0);
+    vec2 cs = vec2(0.25, 0.25);
     vec2 rep = vFac.xy, local; vec2 org; vec2 size = cs;
     fLit = 1.0;
     if (vFac.w > 0.5) {
       // 看板
       local = clamp(rep, 0.004, 0.996);
-      if (st < 1.5) org = vec2(st, 2.0) * cs; else { org = vec2(0.5, 2.0 / 3.0); size = vec2(0.5, 1.0 / 3.0); }
+      if (st < 1.5) org = vec2(st, 3.0) * cs; else { org = vec2(0.5, 0.75); size = vec2(0.5, 0.25); }
     } else if (rep.y < 1.0) {
       // 1階は区画（6m）ごとに違う店にする（同じ看板が並ばないように）
-      float shop = floor(fHash(vec2(floor(rep.x), vSeed * 31.0)) * 3.999);
-      local = vec2(fract(rep.x), clamp(rep.y, 0.0, 1.0)); org = vec2(shop, 1.0) * cs;
+      float shop = floor(fHash(vec2(floor(rep.x), vSeed * 31.0)) * 7.999);
+      local = vec2(fract(rep.x), clamp(rep.y, 0.0, 1.0)); org = vec2(mod(shop, 4.0), 1.0 + floor(shop / 4.0)) * cs;
     } else {
       local = fract(vec2(rep.x, rep.y - 1.0)); org = vec2(st, 0.0) * cs;
       // 部屋ごとに明かりが点いているかどうか（ビルごとに違う並び）
@@ -220,7 +248,7 @@ float fHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453)
       .replace('#include <normal_fragment_maps>', '#ifdef USE_NORMALMAP_TANGENTSPACE\n vec3 mapN = textureGrad(normalMap, fUv, fGx, fGy).xyz * 2.0 - 1.0;\n mapN.xy *= normalScale;\n normal = normalize(tbn * mapN);\n#endif')
       .replace('#include <emissivemap_fragment>', '#ifdef USE_EMISSIVEMAP\n totalEmissiveRadiance *= textureGrad(emissiveMap, fUv, fGx, fGy).rgb * fLit;\n#endif')
   }
-  material.customProgramCacheKey = () => 'facade2'
+  material.customProgramCacheKey = () => 'facade3'
 
   // 頂点を集める
   const P = [], N = [], C = [], U = [], F = [], SD = []

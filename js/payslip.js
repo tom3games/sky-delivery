@@ -1,5 +1,6 @@
 // payslip.js — 「1日だけ職場体験」シリーズ共通の給料明細（結果画像）。依存なし（Canvas 2D だけ）。
-// 正本は ~/Desktop/claudecode/_shared/payslip.js。各ゲームへコピーして同梱する。型は2本で同じ、色だけ仕事ごとに変える。
+// 正本は ~/Desktop/claudecode/_shared/payslip.js。各ゲームへコピーして同梱する。
+// sky-delivery 版だけ「出前の記録」（d.log）を足してある（2026-11-02。正本には未反映）。型は2本で同じ、色だけ仕事ごとに変える。
 //
 // 使い方:
 //   import { drawPayslip, PAYSLIP_W, PAYSLIP_H } from './payslip.js'
@@ -90,6 +91,20 @@ export function drawPayslip(canvas, d, th) {
     try { x.drawImage(d.photo, -ph.w / 2, -ph.h / 2, ph.w, ph.h) } catch (e) {}
     x.fillStyle = 'rgba(233,180,76,.75)'; x.fillRect(-60, -ph.h / 2 - 26, 120, 34)
     x.restore()
+  }
+  // 出前の記録（行が少なくて空いた所を、1件ずつの記録で埋める）。d.log = [{ no, text, note, bad }]
+  const logTop = Math.max(y + 4, d.photo ? ph.y + ph.h + 40 : 0), logEnd = P.y + 850
+  if (d.log && d.log.length && logEnd - logTop > 90) {
+    let ly = logTop
+    x.textAlign = 'left'; x.font = `900 26px ${FJ}`; x.fillStyle = 'rgba(29,26,22,.55)'; x.fillText(d.logTitle || '', colL, ly); ly += 40
+    const lh = Math.min(44, (logEnd - ly) / d.log.length)
+    for (const r of d.log) {
+      if (ly > logEnd - 10) break
+      x.fillStyle = r.bad ? '#c62828' : th.main; x.font = `900 24px ${FJ}`; x.textAlign = 'left'; x.fillText(String(r.no), colL + 4, ly)
+      x.fillStyle = ink; fitText(x, r.text, (P.x + P.w - 36 - colL) * 0.58, 26, FJ, '700'); x.fillText(r.text, colL + 40, ly)
+      x.textAlign = 'right'; x.fillStyle = r.bad ? '#c62828' : 'rgba(29,26,22,.65)'; fitText(x, r.note, (P.x + P.w - 36 - colL) * 0.36, 24, FJ, '700'); x.fillText(r.note, P.x + P.w - 36, ly)
+      ly += lh
+    }
   }
   // 手取り
   const ny = Math.max(y + 6, P.y + 860)

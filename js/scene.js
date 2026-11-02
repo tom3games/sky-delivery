@@ -234,7 +234,8 @@ export function buildScene(scene, world) {
       const cy = o.y0 + o.h / 2
       if (o.kind === 'building') {
         const kk = k++
-        const color = new THREE.Color(BUILD_COLORS[(kk * 5) % BUILD_COLORS.length]).lerp(new THREE.Color(0xffffff), 0.35)
+        const hz = ((kk * 2654435761) >>> 0) / 4294967296   // ビルごとの揺らぎ（同じ色が並ばないように）
+        const color = new THREE.Color(BUILD_COLORS[(kk * 5) % BUILD_COLORS.length]).lerp(new THREE.Color(hz < 0.5 ? 0xffffff : 0xd8c8b0), 0.12 + hz * 0.4).offsetHSL((hz - 0.5) * 0.04, (hz - 0.5) * 0.12, (((kk * 7) % 5) - 2) * 0.025)
         // 外壁の型: 高いビルはガラスか事務所、低いものはマンション・レンガ・事務所
         const style = o.h > 55 ? [2, 0, 1, 2, 0][kk % 5] : [1, 0, 3, 1, 2, 3, 0][kk % 7]
         if (o.yaw) bld.box(o.cx, cy, o.cz, o.hw, o.h / 2, o.hl, color.getHex(), o.yaw, { noTop: true, shade: false })

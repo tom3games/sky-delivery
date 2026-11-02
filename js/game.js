@@ -8,6 +8,7 @@ import { FX } from './fx.js'
 import { loadSky, setAniso } from './look.js'
 import { Q } from './quality.js'
 import { RunnerModel } from './runnermodel.js'
+import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js'
 import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js'
 import { JOB, createShift, stepShift, curOrder, payData, money } from '../shared/delivery.js'
 import { createBot, botInput } from '../shared/bot.js'
@@ -22,14 +23,12 @@ const store = { get: k => { try { return localStorage.getItem(k) } catch (e) { r
 const T = {
   ja: {
     series: '1日だけ職場体験 #4', logo: '空中出前', masterName: '店主', masterLine: '出前は空から行ってくれ。のびても崩れても文句言われるで。',
-    start: '出勤する', how: '仕事の説明', lang: 'English', more: 'ほかのバカゲーも遊ぶ', muteOn: '音を消す', muteOff: '音を出す', loading: '仕込み中',
+    start: '出勤する', how: '仕事の説明', lang: 'EN', more: 'ほかのゲーム', muteOn: '音 入', muteOff: '音 切', loading: '仕込み中',
     howTitle: '出前の心得', ok: 'わかった',
     howItems: [
-      '<b>画面をタッチ</b>すると、そのビルにワイヤーを掛ける。届くのは35mまで。もう一度タッチで外す',
-      '<b>巻き取り</b>を入れるとワイヤーが縮んで、振り子が速くなる',
-      '速く飛ぶ・強く着地する・壁にぶつかると、<b>料理が崩れる</b>。右上の丼を見て',
-      '赤い提灯の窓の前で<b>ゆっくり</b>寄れば手渡し。<b>投げる</b>と速いけど崩れる',
-      '崩れすぎても、遅れても怒られる。届けたら店に戻って次を受け取る。3分で5件'
+      'ビルを<b>タッチ</b>でワイヤー。<b>巻取</b>で振り子が速くなる',
+      '急ぐほど<b>丼の中身が減る</b>。遅れても怒られる',
+      '赤い提灯の窓に<b>そっと寄れば</b>手渡し。<b>投げる</b>のは賭け'
     ],
     hintWire: '<small>こつ</small>ビルをタッチするとワイヤーが出る', hintWirePc: '<small>こつ</small>ビルをクリック（か E）でワイヤー。Shift で巻き取り',
     keysPc: 'PC: WASD・矢印で移動　クリックでワイヤー（E でも可）　Space ジャンプ　Shift 巻き取り　F 投げる　ドラッグで見回す',
@@ -41,6 +40,7 @@ const T = {
     reel: '巻取', jump: '跳ぶ', throw: '投げる', tooFar: '届かない',
     spill: { 25: 'スープが揺れてる', 50: '半分こぼれた', 75: 'ほとんど残ってない' },
     pickup: (d, p, f) => `はい次、${d}。${p}の${f}階や`,
+    custLine: { '事務所': '昼休み終わる前に頼むで', '美容室': 'パーマ中で動かれへん。窓まで頼むわ', '法律事務所': '一滴でもこぼれてたら訴えるからな', '歯医者': '麻酔切れる前に食べたいねん', 'ネイルサロン': '爪乾かしてるから、そっと渡してな', '設計事務所': '徹夜明けや。熱いうちに頼む', '塾': '休み時間10分しかないねん', '探偵事務所': '張り込み中や。目立たんように来てくれ', '会議室': '会議の前に来てや。遅れたら気まずい', 'ヨガ教室': 'ゆっくりでええ。でも麺はのばさんといて' },
     tooFast: '速すぎて受け取れん！', lateMsg: '遅れてるで！',
     react: { good: '早っ！ 熱いうちにいただきます', ok: 'ちょっと減ってるけど、まあええわ', throwOk: '窓から入ってきた！？', mess: 'スープどこいったん？ もう頼まん', late: 'のびのびやん…', drop: '下に落ちたで！' },
     tip: y => `チップ ${y}円`, noTip: 'チップなし', allDone: '全部届けた！', timeUp: 'シフト終わり',
@@ -51,16 +51,13 @@ const T = {
   },
   en: {
     series: 'ONE-DAY JOB #4', logo: 'Sky Delivery', masterName: 'Chef', masterLine: 'Take the orders by air. They complain if it spills, and they complain if it is late.',
-    start: 'Clock in', how: 'How to work', lang: '日本語', more: 'More silly games', muteOn: 'Mute', muteOff: 'Sound on', loading: 'Prepping',
+    start: 'Clock in', how: 'How to work', lang: 'JP', more: 'More games', muteOn: 'Sound on', muteOff: 'Muted', loading: 'Prepping',
     howTitle: 'Delivery rules', ok: 'Got it',
     howItems: [
-      '<b>Tap the screen</b> to shoot a wire at that building. Reach is 35 m. Tap again to let go',
-      '<b>Reel</b> shortens the wire and speeds up your swing',
-      'Flying fast, landing hard and hitting walls <b>spill the food</b>. Watch the bowl',
-      'Get <b>slowly</b> close to the window with the red lantern to hand it over. <b>Throwing</b> is quick but spills',
-      'Spill too much or arrive late and they get angry. Go back to the shop for the next one. 5 orders in 3 minutes'
+      '<b>Tap</b> a building to shoot a wire. <b>Reel</b> to swing faster',
+      'The faster you go, <b>the more soup you lose</b>. Late is bad too',
+      'Ease up to the window with the red lantern to <b>hand it over</b>. <b>Throwing</b> is a gamble'
     ],
-    hintWire: '<small>こつ</small>ビルをタッチするとワイヤーが出る', hintWirePc: '<small>こつ</small>ビルをクリック（か E）でワイヤー。Shift で巻き取り',
     hintWire: '<small>Tip</small>Tap a building to shoot a wire', hintWirePc: '<small>Tip</small>Click a building (or E) to wire. Shift to reel',
     keysPc: 'PC: WASD / arrows move · click to wire (or E) · Space jump · Shift reel · F throw · drag to look',
     keysTouch: 'Left stick moves, tap to wire, drag to look around. Run into a wall to climb it',
@@ -71,6 +68,7 @@ const T = {
     reel: 'Reel', jump: 'Jump', throw: 'Throw', tooFar: 'Too far',
     spill: { 25: 'Soup is sloshing', 50: 'Half of it is gone', 75: 'Almost nothing left' },
     pickup: (d, p) => `Next: ${d} for the ${p}`,
+    custLine: { '事務所': 'Before my lunch break ends, please', '美容室': 'I am mid-perm. Bring it to the window', '法律事務所': 'One drop spilled and I will sue', '歯医者': 'I want to eat before the anesthetic wears off', 'ネイルサロン': 'My nails are drying. Hand it over gently', '設計事務所': 'Up all night. Bring it hot', '塾': 'I only have a 10-minute break', '探偵事務所': 'I am on a stakeout. Do not make a scene', '会議室': 'Before the meeting starts, please', 'ヨガ教室': 'Take it easy. Just do not let the noodles go soggy' },
     tooFast: 'Too fast to grab it!', lateMsg: 'You are late!',
     react: { good: 'Already? Still hot, thanks!', ok: 'A bit spilled, but fine', throwOk: 'It flew in the window!?', mess: 'Where did the soup go?', late: 'The noodles are soggy…', drop: 'It fell on the street!' },
     tip: y => `Tip ¥${y}`, noTip: 'No tip', allDone: 'All delivered!', timeUp: 'Shift over',
@@ -87,7 +85,7 @@ function applyLang() {
   document.documentElement.lang = lang
   for (const el of document.querySelectorAll('[data-t]')) { const v = t(el.dataset.t); if (typeof v === 'string') el.textContent = v }
   $('howList').innerHTML = t('howItems').map((s, i) => `<li data-n="${'一二三四五'[i]}"><span>${s}</span></li>`).join('')
-  $('howKeys').textContent = touchMode ? t('keysTouch') : t('keysPc')
+  $('howKeys').textContent = touchMode ? '' : t('keysPc')   // スマホは上の3行で足りる（同じ説明を繰り返さない）
   $('btnMute').textContent = Snd.muted ? t('muteOff') : t('muteOn')
 }
 
@@ -172,15 +170,22 @@ const target = new THREE.Group()
   const win = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.2), new THREE.MeshBasicMaterial({ color: 0xffd9a0 }))
   const frame = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 2.5), new THREE.MeshStandardMaterial({ color: 0x3a3632 }))
   frame.position.z = -0.01
+  // 客: 窓辺に立つ3Dの人（腰から下は窓の下の壁で隠す）。読み込み前は影絵の板
   const cust = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.4), new THREE.MeshBasicMaterial({ map: custTex, transparent: true }))
   cust.position.set(0, -0.25, 0.02)
+  const person = new Customer(); person.group.position.set(0, -0.45, 0.25); person.group.visible = false
+  const sill = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.95, 0.12), new THREE.MeshStandardMaterial({ color: 0x8c8378, roughness: 0.85 }))
+  sill.position.set(0, -0.68, 0.5)
+  const ledge = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.08, 0.35), new THREE.MeshStandardMaterial({ color: 0xb8b1a6, roughness: 0.7 }))
+  ledge.position.set(0, -0.2, 0.5)
+  target.add(person.group, sill, ledge)
   const lan = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 1.0, 14), new THREE.MeshStandardMaterial({ color: 0xc8341f, emissive: 0xe0401f, emissiveIntensity: 1.4 }))
   lan.position.set(1.9, 0.4, 0.5)
   const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.12, 12), new THREE.MeshStandardMaterial({ color: 0x1d1a16 }))
   cap.position.set(1.9, 0.96, 0.5)
   const glow = new THREE.PointLight(0xff8040, 8, 14); glow.position.set(0, 0, 1.4)
   target.add(frame, win, cust, lan, cap, glow)
-  target.userData = { cust, lan }
+  target.userData = { cust, lan, person }
 }
 scene.add(target)
 // 投げた料理
@@ -205,7 +210,9 @@ const cam = { hd: -Math.PI / 2, pitch: 0.15, userT: -1e9, pos: new THREE.Vector3
 const _v = new THREE.Vector3(), _w = new THREE.Vector3()
 
 function spawnRunner(id) { return createRunner({ id, spawn: { x: S.x - 4, y: 0, z: S.z, yaw: -Math.PI / 2 } }) }
-function newModel() { if (model) { scene.remove(model.group); model.dispose() } model = new RunnerModel(); scene.add(model.group); return model }
+function newModel() { if (model) { scene.remove(model.group); model.dispose() } model = charAssets.ready ? new CharRunnerModel() : new RunnerModel(); scene.add(model.group); return model }
+// 人物の素材は裏で読む。読み終わったら今の人形と差し替える
+loadCharAssets().then(() => { if (charAssets.ready && model && !(model instanceof CharRunnerModel)) newModel() })
 
 // ---------------------------------------------------------------- 入力
 const keys = new Set()
@@ -357,7 +364,7 @@ function updateHud(dt) {
   if (sayT > 0) { sayT -= dt; $('say').classList.toggle('hidden', sayT <= 0) }
   document.querySelector('.tbtn[data-k=throw]').classList.toggle('off', !sh.carrying)
   // 画面の外の届け先へ矢印
-  const goal = sh.carrying || sh.thrown ? _w.set(o.x, o.y, o.z) : _w.set(S.x, 2, S.z)
+  const goal = sh.carrying || sh.thrown ? _w.set(o.x, o.y + 1.8, o.z) : _w.set(S.x, 2, S.z)   // 窓の上に出す（客の顔に重ねない）
   const p = _v.copy(goal).project(camera)
   const W = innerWidth, H = innerHeight
   const behind = p.z > 1
@@ -397,7 +404,7 @@ function onRunnerEvent(e) {
 function onShiftEvent(e) {
   log.push({ src: 's', ...e, at: +sh.t.toFixed(2) })
   const o = curOrder(sh)
-  if (e.t === 'pickup') { sfx('shop', { vol: 0.8 }); say(`<small>${t('masterName')}</small>${t('pickup')(dishName(o), placeName(o), o.floor)}`, 2.4) }
+  if (e.t === 'pickup') { sfx('shop', { vol: 0.8 }); const cl = t('custLine')[o.place[0]]; say(cl ? `<small>${placeName(o)}${lang === 'ja' ? 'のお客' : ''}</small>${cl}` : `<small>${t('masterName')}</small>${t('pickup')(dishName(o), placeName(o), o.floor)}`, 2.6) }
   else if (e.t === 'spill') {
     sfx('slosh', { vol: 0.5 + e.level / 200 }); if (e.level >= 50) sfx('dish', { vol: 0.6 })
     bowlWord(t('spill')[e.level]); const b = $('bowl'); b.classList.remove('tilt'); void b.offsetWidth; b.classList.add('tilt')
@@ -430,6 +437,16 @@ function showResult() {
   d.comment = p.drops ? C.drop : p.ok <= 1 ? C.few : messy > late && messy ? C.mess : late ? C.late : p.ok >= 4 && !p.claims ? C.great : C.ok
   const st = t('stamps'); d.stamp = net >= 7000 ? st[3] : net >= 5000 ? st[2] : net >= 3500 ? st[1] : st[0]
   d.stampK = 1; d.photo = photo; d.footer = 'tom3games.github.io/sky-delivery'
+  // 出前の記録: 1件ずつ、何をどう届けて客がどうだったか
+  const ja = lang === 'ja', RL = T[lang].react
+  d.logTitle = ja ? '今日の出前' : "Today's orders"
+  d.log = sh.targets.slice(0, JOB.orders).map((o, i) => {
+    const r = R[i]
+    if (!r) return { no: i + 1, text: ja ? `${placeName(o)}へ ${dishName(o)}` : `${dishName(o)} to ${placeName(o)}`, note: ja ? '届かず' : 'never arrived', bad: true }
+    const how = r.how === 'drop' ? (ja ? '落とした' : 'dropped') : r.how === 'throw' ? (ja ? '投げ入れ' : 'thrown in') : (ja ? '手渡し' : 'handed')
+    const note = r.how === 'drop' ? how : r.reason === 'mess' ? (ja ? `${how}・こぼれすぎ` : `${how}, spilled`) : r.reason === 'late' ? (ja ? `${how}・${r.late}秒遅れ` : `${how}, ${r.late}s late`) : r.tip ? (ja ? `${how}・チップ${r.tip}円` : `${how}, tip ¥${r.tip}`) : how
+    return { no: i + 1, text: ja ? `${placeName(o)}へ ${dishName(o)}` : `${dishName(o)} to ${placeName(o)}`, note, bad: r.angry }
+  })
   drawPayslip($('slip'), d, { main: '#1f2a44', dark: '#121a2e', accent: '#c8341f', bg: '#2a2016' })
   sfx(net >= 5000 ? 'win' : net >= 3500 ? 'meh' : 'lose', { vol: 0.8 })
   $('btnPost').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(t('postText')(net, p.ok)) + '&url=' + encodeURIComponent(URL_)
@@ -542,7 +559,9 @@ function render(dt) {
     target.position.set(o.x - o.nx * 0.65, o.y, o.z - o.nz * 0.65)
     target.rotation.y = Math.atan2(o.nx, o.nz)
     const k = performance.now() / 1000
-    target.userData.cust.rotation.z = Math.sin(k * 6) * 0.08
+    const ud = target.userData
+    if (ud.person.show(o.idx != null ? o.idx : shift.idx)) { ud.cust.visible = false; ud.person.group.visible = true; ud.person.update(dt) }
+    else { ud.cust.visible = true; ud.cust.rotation.z = Math.sin(k * 6) * 0.08 }
     target.userData.lan.position.y = 0.4 + Math.sin(k * 2) * 0.05
     const dT = camera.position.distanceTo(target.position); target.userData.lan.scale.setScalar(Math.max(1, dT / 30))
   }
@@ -576,7 +595,7 @@ window.sky = {
     pause: on => { dbgPause = on }, step: n => { for (let i = 0; i < n; i++) stepOnce(); render(STEP) },
     teleport: (x, y, z, yaw) => { Object.assign(me, { x, y, z, vx: 0, vy: 0, vz: 0, rope: null, climbing: null, grounded: y < 0.1 }); if (yaw != null) me.yaw = yaw },
     pressWire: (sx, sy) => aimAt(sx, sy), pressJump: () => { press.jump = true }, pressThrow: () => { press.throw = true }, reel: on => setReel(on),
-    keys, stick, say, setMess: m => { sh.mess = m }
+    keys, stick, say, setMess: m => { sh.mess = m }, target, get model() { return model }
   }
 }
 applyLang()

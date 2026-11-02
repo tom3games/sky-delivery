@@ -1,4 +1,5 @@
-// 杉林。1本 = 幹（実写の杉の樹皮）＋ 葉の板3枚（手描きの枝葉の絵を透かして十字に立てる）。
+// 街路樹（ケヤキ風の丸い広葉樹）。1本 = 幹 ＋ 葉の板3枚（手描きの葉の房の絵を透かして十字に立てる）。
+// 2026-11-02 外部レビュー「都心の歩道に杉が1本だけ立っている」で杉から変えた。
 // 全部を InstancedMesh 2つで描く（何千本でも描画は2回）。
 import * as THREE from 'three'
 import { tex } from './look.js'
@@ -6,37 +7,27 @@ import { Q } from './quality.js'
 
 // 葉の絵: 下から上へ、垂れた枝の房を重ねて細長い円錐の樹冠を描く
 function crownTexture() {
-  const W = 256, H = 1024
+  // 丸い樹冠: 楕円の中に葉の房（小さい楕円の集まり）を重ねる。右上が明るく、左下と内側が暗い
+  const W = 512, H = 512
   const cv = document.createElement('canvas')
   cv.width = W; cv.height = H
   const g = cv.getContext('2d')
-  let seed = 3
+  let seed = 7
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647
-  const layers = 46
-  for (let i = 0; i < layers; i++) {
-    const t = i / (layers - 1)              // 0 = 下, 1 = 上
-    const y = H * (0.97 - t * 0.93)
-    const half = (W * 0.47) * Math.pow(1 - t, 0.85) + 6
-    // 枝の房（左右へ垂れる楕円の集まり）
-    for (let k = 0; k < 14; k++) {
-      const side = rnd() < 0.5 ? -1 : 1
-      const reach = half * (0.25 + rnd() * 0.8)
-      const x = W / 2 + side * reach * (0.4 + rnd() * 0.6)
-      const yy = y + rnd() * 26 - 6 + reach * 0.12
-      const rw = 10 + rnd() * 22 * (1 - t * 0.6), rh = 6 + rnd() * 10
-      const light = 0.55 + 0.45 * ((side > 0 ? 0.65 : 0.35) + (1 - (yy / H)) * 0.3) + (rnd() - 0.5) * 0.2
-      const r = 28 * light, gg = 62 * light + 8, b = 30 * light
-      g.fillStyle = `rgb(${r | 0},${gg | 0},${b | 0})`
-      g.beginPath(); g.ellipse(x, yy, rw, rh, side * (0.25 + rnd() * 0.3), 0, Math.PI * 2); g.fill()
-      // 細かい葉先
-      g.strokeStyle = `rgba(${(r * 1.3) | 0},${(gg * 1.25) | 0},${(b * 1.2) | 0},0.9)`
-      g.lineWidth = 1.4
-      for (let n = 0; n < 6; n++) {
-        const a = rnd() * Math.PI * 2, l = rw * (0.6 + rnd() * 0.7)
-        g.beginPath(); g.moveTo(x, yy); g.lineTo(x + Math.cos(a) * l, yy + Math.abs(Math.sin(a)) * l * 0.6); g.stroke()
-      }
-    }
+  const cx = W / 2, cy = H * 0.5, rx = W * 0.46, ry = H * 0.44
+  for (let i = 0; i < 900; i++) {
+    const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd())
+    const x = cx + Math.cos(a) * rx * rr, y = cy + Math.sin(a) * ry * rr
+    // 外周ほど房を小さく、上ほど明るく
+    const edge = rr, size = 10 + rnd() * 18 * (1.1 - edge * 0.5)
+    const lit = 0.45 + 0.4 * (1 - (y - (cy - ry)) / (2 * ry)) + 0.2 * ((x - cx) / rx) * 0.5 + (rnd() - 0.5) * 0.18 - (1 - edge) * 0.12
+    const r = 52 * lit + 10, gg = 92 * lit + 22, b = 36 * lit + 8
+    g.fillStyle = `rgb(${r | 0},${gg | 0},${b | 0})`
+    g.beginPath(); g.ellipse(x, y, size, size * 0.7, rnd() * 3, 0, Math.PI * 2); g.fill()
   }
+  // 房の切れ目から見える枝
+  g.strokeStyle = 'rgba(70,55,40,0.8)'; g.lineWidth = 5
+  for (let k = 0; k < 5; k++) { const a = -Math.PI / 2 + (k - 2) * 0.45; g.beginPath(); g.moveTo(cx, H); g.quadraticCurveTo(cx + Math.cos(a) * 40, cy + 60, cx + Math.cos(a) * rx * 0.55, cy + Math.sin(a) * ry * 0.3); g.stroke() }
   const t = new THREE.CanvasTexture(cv)
   t.colorSpace = THREE.SRGBColorSpace
   t.anisotropy = 4
@@ -78,17 +69,17 @@ export function buildForest(scene, spots) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3()
   const col = new THREE.Color()
   spots.forEach((t, i) => {
-    const H = 16 * t.s                        // 木の高さ
+    const H = 9.5 * t.s                       // 木の高さ（街路樹なので低め）
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.r)
-    // 幹は樹冠の下を少し越えるところまで
-    m.compose(p.set(t.x, t.y - 0.3, t.z), q, sc.set(t.s * 1.1, H * 0.75, t.s * 1.1))
+    // 幹は樹冠の中ほどまで
+    m.compose(p.set(t.x, t.y - 0.3, t.z), q, sc.set(t.s * 0.8, H * 0.6, t.s * 0.8))
     trunks.setMatrixAt(i, m)
-    // 樹冠は高さの 30% から上
-    const cw = H * 0.34
-    m.compose(p.set(t.x, t.y + H * 0.28, t.z), q, sc.set(cw, H * 0.74, cw))
+    // 丸い樹冠は高さの 30% から上。横に広い
+    const cw = H * 0.8
+    m.compose(p.set(t.x, t.y + H * 0.3, t.z), q, sc.set(cw, H * 0.7, cw))
     crowns.setMatrixAt(i, m)
     const v = 0.78 + ((i * 7919) % 100) / 100 * 0.38
-    crowns.setColorAt(i, col.setRGB(v * 0.96, v, v * 0.92))
+    crowns.setColorAt(i, col.setRGB(v * (0.9 + ((i * 31) % 7) * 0.03), v, v * 0.85))
   })
   for (const im of [trunks, crowns]) { im.castShadow = true; im.receiveShadow = true; im.instanceMatrix.needsUpdate = true; scene.add(im) }
   crowns.instanceColor.needsUpdate = true

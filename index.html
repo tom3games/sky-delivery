@@ -37,20 +37,19 @@
   </div>
   <div class="title-actions">
     <button id="btnStart" class="fuda" data-t="start"></button>
-    <button id="btnHow" class="memo-link" data-t="how"></button>
+    <button id="btnHow" class="chip" data-t="how"></button>
   </div>
   <nav class="foot">
-    <button id="btnLang" class="tlink" data-t="lang"></button>
-    <button id="btnMute" class="tlink"></button>
-    <a class="tlink" href="https://tom3games.github.io/" data-t="more"></a>
+    <button id="btnLang" class="chip" data-t="lang"></button>
+    <button id="btnMute" class="chip"></button>
+    <a class="chip" href="https://tom3games.github.io/" data-t="more"></a>
   </nav>
 </section>
 
 <!-- 仕事の説明: 店の貼り紙 -->
 <section id="how" class="screen hidden">
   <div class="poster">
-    <div class="tape l"></div><div class="tape r"></div>
-    <h2 data-t="howTitle"></h2>
+        <h2 data-t="howTitle"></h2>
     <ol id="howList"></ol>
     <p class="keys" id="howKeys"></p>
     <button class="fuda small" data-close data-t="ok"></button>
@@ -109,9 +108,11 @@
   <div class="slip-wrap"><canvas id="slip"></canvas></div>
   <div class="result-actions">
     <button id="btnAgain" class="fuda small" data-t="again"></button>
-    <button id="btnSave" class="tlink strong" data-t="save"></button>
-    <a id="btnPost" class="tlink strong" target="_blank" rel="noopener" data-t="post"></a>
-    <button id="btnTitle" class="tlink" data-t="toTitle"></button>
+    <div class="chips">
+      <button id="btnSave" class="chip" data-t="save"></button>
+      <a id="btnPost" class="chip" target="_blank" rel="noopener" data-t="post"></a>
+      <button id="btnTitle" class="chip" data-t="toTitle"></button>
+    </div>
   </div>
 </section>
 
@@ -141,7 +142,7 @@
   },9000);
 })();
 </script>
-<script src="sfx.js?v=1"></script>
-<script type="module" src="js/game.js?v=1"></script>
+<script src="sfx.js?v=2"></script>
+<script type="module" src="js/game.js?v=2"></script>
 </body>
 </html>

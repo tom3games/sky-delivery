@@ -28,3 +28,7 @@
 - snd/jingles_SAX01.mp3: 85 Short music jingles / Kenney / CC0
 - snd/jingles_SAX03.mp3: 85 Short music jingles / Kenney / CC0
 - snd/jingles_PIZZA07.mp3: 85 Short music jingles / Kenney / CC0
+
+## 人物（3D）
+- assets/chars/Ranger.glb, Rig_Medium_*.glb: KayKit Adventurers 2.0 / Kay Lousberg / CC0（色は塗り替え）
+- assets/chars/character-*.glb, Textures/colormap.png: Kenney Mini Characters / Kenney / CC0

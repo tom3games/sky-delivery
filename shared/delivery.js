@@ -182,13 +182,13 @@ export function payData(sh, lang = 'ja') {
   const ok = R.filter(r => r.how !== 'drop')
   const tips = R.reduce((a, r) => a + r.tip, 0)
   const claims = R.filter(r => r.angry && r.how !== 'drop').length, drops = R.filter(r => r.how === 'drop').length
-  const pay = [{ label: ja ? '配達手当' : 'Delivery fee', note: ja ? `${ok.length}件` : `${ok.length}`, yen: ok.length * JOB.fee }]
+  const pay = ok.length ? [{ label: ja ? '配達手当' : 'Delivery fee', note: ja ? `${ok.length}件` : `${ok.length}`, yen: ok.length * JOB.fee }] : []   // 0件の行は出さない
   if (tips) pay.push({ label: ja ? 'チップ' : 'Tips', note: ja ? `${R.filter(r => r.tip > 0).length}件` : `${R.filter(r => r.tip > 0).length}`, yen: tips })
   const ded = []
   if (claims) ded.push({ label: ja ? 'クレーム対応' : 'Complaints', note: ja ? `${claims}件` : `${claims}`, yen: claims * JOB.claim })
   if (drops) ded.push({ label: ja ? '落とした料理' : 'Dropped food', note: ja ? `${drops}皿` : `${drops}`, yen: drops * JOB.dropCost })
   const undone = JOB.orders - R.length
-  if (undone) ded.push({ label: ja ? '届けられなかった' : 'Not delivered', note: ja ? `${undone}件` : `${undone}`, yen: undone * JOB.claim })
+  if (undone) ded.push({ label: ja ? '待たせたお詫び' : 'Apologies', note: ja ? `${undone}件 届かず` : `${undone} never arrived`, yen: undone * JOB.claim })
   return { pay, ded, ok: ok.length, claims, drops, undone, tips }
 }
 
