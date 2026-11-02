@@ -99,8 +99,6 @@ button,a{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touc
 .tbtn[data-k=wire] svg{width:52px;height:52px}
 .tbtn[data-k=wire].aim{box-shadow:0 0 0 3px rgba(255,255,255,.85),0 0 18px rgba(217,119,42,.9)}
 .tbtn[data-k=jump]{right:max(132px,calc(env(safe-area-inset-right) + 132px));bottom:max(20px,calc(env(safe-area-inset-bottom) + 4px));width:80px;height:96px;border-radius:16px}
-.tbtn[data-k=throw]{right:max(132px,calc(env(safe-area-inset-right) + 132px));bottom:max(126px,calc(env(safe-area-inset-bottom) + 110px));width:80px;height:46px;border-radius:12px;font-size:13px}
-@media (max-height:430px){.tbtn[data-k=wire]{width:88px;height:88px}.tbtn[data-k=jump]{right:max(116px,calc(env(safe-area-inset-right) + 116px));width:70px;height:82px}.tbtn[data-k=throw]{right:max(116px,calc(env(safe-area-inset-right) + 116px));bottom:max(108px,calc(env(safe-area-inset-bottom) + 92px));width:70px;height:40px}.stick{width:108px;height:108px;margin:-54px 0 0 -54px}}
 .tbtn.lit{background:#d9772a;border-color:#fff}
 .tbtn.off{opacity:.3}
 .tbtn:active{transform:scale(.94)}

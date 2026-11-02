@@ -251,26 +251,11 @@ await t('速すぎると受け取れない（止まって）', async () => {
   })
   expect(r.fast && !r.deliv, JSON.stringify(r))
 })
-await t('投げ入れ: 速いまま投げると窓に入る（崩れは増える）', async () => {
-  const r = await p.evaluate(() => {
-    const o = sky.sh.targets[sky.sh.idx]; sky.log.length = 0
-    const yaw = Math.atan2(-o.nx, -o.nz)
-    sky.dbg.teleport(o.x + o.nx * 7.5, o.y - 1.3, o.z + o.nz * 7.5, yaw); Object.assign(sky.me, { vx: -o.nx * 14, vz: -o.nz * 14, vy: 0, grounded: false })
-    sky.dbg.pressThrow(); sky.dbg.step(30)
-    return sky.log.find(e => e.t === 'deliver')
-  })
-  expect(r && r.how === 'throw' && r.mess >= 18, JSON.stringify(r)); return { mess: r.mess, tip: r.tip }
-})
-await t('投げて外すと落ちて割れる（料理代を引かれる）', async () => {
-  const r = await p.evaluate(() => {
-    sky.dbg.teleport(sky.JOB.shop.x - 2, 0, sky.JOB.shop.z); sky.dbg.step(2)
-    const o = sky.sh.targets[sky.sh.idx]; sky.log.length = 0
-    const yaw = Math.atan2(o.nx, o.nz)
-    sky.dbg.teleport(o.x + o.nx * 8, o.y, o.z + o.nz * 8, yaw); Object.assign(sky.me, { vx: o.nx * 10, vz: o.nz * 10, grounded: false })
-    sky.dbg.pressThrow(); sky.dbg.step(200)
-    return { drop: sky.log.some(e => e.t === 'drop'), d: sky.log.find(e => e.t === 'deliver') }
-  })
-  expect(r.drop && r.d && r.d.how === 'drop' && r.d.angry, JSON.stringify(r))
+await t('投げるボタンが無い・F キーでも投げない（2026-11-02 本人「投げるボタンいらない」）', async () => {
+  const btn = await p.$('.tbtn[data-k=throw]')
+  await p.keyboard.press('KeyF')
+  const r = await p.evaluate(() => { sky.log.length = 0; sky.dbg.step(30); return { thrown: !!sky.sh.thrown, ev: sky.log.some(e => e.t === 'throw') } })
+  expect(!btn && !r.thrown && !r.ev, JSON.stringify({ btn: !!btn, ...r }))
 })
 await t('最後まで行くと給料明細が出る（画像の保存・Xのリンク）', async () => {
   await p.evaluate(() => { sky.dbg.step(60 * 200) }); await p.evaluate(() => sky.dbg.pause(false)); await p.waitForTimeout(2500)

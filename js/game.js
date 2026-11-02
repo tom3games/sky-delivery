@@ -33,10 +33,10 @@ const T = {
     howItems: [
       'ビルを<b>タッチ</b>でワイヤー。大きいボタンなら前の上へ自動で',
       '急ぐほど<b>丼の中身が減る</b>。遅れても怒られる',
-      '赤い提灯の窓に<b>そっと寄れば</b>手渡し。<b>投げる</b>のは賭け'
+      '赤い提灯の窓に<b>そっと寄れば</b>手渡し'
     ],
     hintWire: '<small>こつ</small>ビルをタッチするとワイヤーが出る', hintWirePc: '<small>こつ</small>ビルをクリック（か E）でワイヤー',
-    keysPc: 'PC: WASD・矢印で移動　クリックでワイヤー（E は前の上へ自動）　Space ジャンプ　F 投げる　ドラッグで見回す',
+    keysPc: 'PC: WASD・矢印で移動　クリックでワイヤー（E は前の上へ自動）　Space ジャンプ　ドラッグで見回す',
     keysTouch: '左のスティックで移動、画面をタッチでワイヤー、なぞると見回す。壁に向かって走ると登れる',
     credit: '音: Kenney, rubberduck, artisticdude, poinl, Almitory ほか（CC0）。詳しくは CREDITS.md',
     ticketHead: '御伝票', shiftLeft: 'シフト残り', toShop: '店に戻って受け取る', shopName: '宙吊軒',
@@ -61,10 +61,10 @@ const T = {
     howItems: [
       '<b>Tap</b> a building to shoot a wire. The big button aims ahead for you',
       'The faster you go, <b>the more soup you lose</b>. Late is bad too',
-      'Ease up to the window with the red lantern to <b>hand it over</b>. <b>Throwing</b> is a gamble'
+      'Ease up to the window with the red lantern to <b>hand it over</b>'
     ],
     hintWire: '<small>Tip</small>Tap a building to shoot a wire', hintWirePc: '<small>Tip</small>Click a building (or E) to wire',
-    keysPc: 'PC: WASD / arrows move · click to wire (E auto-aims) · Space jump · F throw · drag to look',
+    keysPc: 'PC: WASD / arrows move · click to wire (E auto-aims) · Space jump · drag to look',
     keysTouch: 'Left stick moves, tap to wire, drag to look around. Run into a wall to climb it',
     credit: 'Sounds: Kenney, rubberduck, artisticdude, poinl, Almitory and others (CC0). See CREDITS.md',
     ticketHead: 'ORDER', shiftLeft: 'Shift', toShop: 'Back to the shop', shopName: 'Chuzuri-ken',
@@ -259,7 +259,6 @@ addEventListener('keydown', e => {
   keys.add(e.code)
   if (e.code === 'KeyE') pendingWire = { at: null, key: true }
   if (e.code === 'Space') { press.jump = true; e.preventDefault() }
-  if (e.code === 'KeyF') press.throw = true
   if (e.code === 'Escape' || e.code === 'KeyP') setPause(!paused)
 })
 addEventListener('keyup', e => keys.delete(e.code))
@@ -405,7 +404,6 @@ function updateHud(dt) {
   $('bowl').classList.toggle('empty', !sh.carrying)
   if (bowlWordT > 0) { bowlWordT -= dt; if (bowlWordT <= 0) $('bowlWord').textContent = '' }
   if (sayT > 0) { sayT -= dt; $('say').classList.toggle('hidden', sayT <= 0) }
-  document.querySelector('.tbtn[data-k=throw]').classList.toggle('off', !sh.carrying)
   // 画面の外の届け先へ矢印
   const goal = sh.carrying || sh.thrown ? _w.set(o.x, o.y + 1.8, o.z) : _w.set(S.x, 2, S.z)   // 窓の上に出す（客の顔に重ねない）
   const p = _v.copy(goal).project(camera)

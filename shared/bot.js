@@ -68,7 +68,7 @@ export function botInput(b, r, sh, world, dt) {
   b.aim = null
   // rush: 近づいたら投げる
   let th = false
-  if (b.kind === 'rush' && sh.carrying) {
+  if (false && b.kind === 'rush' && sh.carrying) {   // 2026-11-02 本人「投げるボタンいらない」で投げは無し
     const d3 = Math.hypot(o.x - r.x, o.y - (r.y + 1.3), o.z - r.z)
     if (d3 < 16 && Math.hypot(r.vx, r.vy, r.vz) > JOB.handSpeed) {
       // 投げた後の軌道が窓の近くを通るかを先に見てから投げる（人が狙うのと同じくらいの精度）
