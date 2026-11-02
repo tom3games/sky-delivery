@@ -31,8 +31,18 @@ export function addTown(world, shop) {
     addBox(world, h)
     town.houses.push(h)
   }
+  clearShopFront(world, shop)
   world.solidProps = true      // 街灯・信号・木・柵・バリケードなどの小物も通り抜けできないように
   world._anchorBoxes = null   // 掛け点の一覧を作り直す
   world.town = town
   return town
+}
+
+// 店の前（受け取りの輪と立て看板が見える所）の木を抜く。輪が木に隠れて見えなかった。見た目を作る前に呼ぶ（何度呼んでも同じ）
+export function clearShopFront(world, shop) {
+  for (const o of world.objects || []) {
+    if (o.type !== 'tree' || o.gone || Math.abs(o.cx - (shop.x - 8)) > 12 || Math.abs(o.cz - shop.z) > 14) continue
+    o.y1 = o.y0 - 5; o.gone = true
+    if (o.ti != null && world.trees[o.ti]) world.trees[o.ti].gone = true
+  }
 }

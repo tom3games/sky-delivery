@@ -3,11 +3,14 @@
 // 窓の客: Kenney Mini Characters（CC0、現代の普段着）。待機アニメの上で右腕を振る
 // 読み込みが終わる前と失敗した時は、前の手続きの人形（runnermodel.js）を使う
 import * as THREE from 'three'
-import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js'
-import { clone as skClone } from '../vendor/jsm/utils/SkeletonUtils.js'
+import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js?v=6'
+import { clone as skClone } from '../vendor/jsm/utils/SkeletonUtils.js?v=6'
 
 const BASE = 'assets/chars/'
-const A = { ready: false, failed: false, ranger: null, clips: {}, custs: [] }
+const A = { ready: false, failed: false, ranger: null, clips: {}, custs: {}, glasses: null }
+// 窓の客の見た目（Kenney Mini Characters）。普通の客は6人を順に、変わった客は1人ずつ決めて小物で描き分ける
+export const CUST_CHARS = { normal: ['female-b', 'male-e', 'female-d', 'female-f', 'male-a', 'male-c'], duf: 'male-f', polite: 'male-d', coins: 'female-c', photo: 'female-e', net: 'male-b' }
+const CHAR_FILES = [...new Set([...CUST_CHARS.normal, CUST_CHARS.duf, CUST_CHARS.polite, CUST_CHARS.coins, CUST_CHARS.photo, CUST_CHARS.net])]
 export const charAssets = A
 
 // 色見本（8x4 のグラデーションの升）を塗り替える。升の位置は ranger_texture.png を見て決めた
@@ -28,9 +31,9 @@ export function loadCharAssets() {
   if (A.loading) return A.loading
   const L = new GLTFLoader()
   const get = f => new Promise((ok, ng) => L.load(BASE + f, ok, undefined, ng))
-  A.loading = Promise.all([get('Ranger.glb'), get('Rig_Medium_General.glb'), get('Rig_Medium_MovementBasic.glb'),
-    ...['male-d', 'female-b', 'male-e', 'female-d', 'male-a', 'female-f'].map(n => get('character-' + n + '.glb'))])
-    .then(([r, g1, g2, ...cs]) => {
+  A.loading = Promise.all([get('Ranger.glb'), get('Rig_Medium_General.glb'), get('Rig_Medium_MovementBasic.glb'), get('aid-glasses.glb'),
+    ...CHAR_FILES.map(n => get('character-' + n + '.glb'))])
+    .then(([r, g1, g2, gl, ...cs]) => {
       r.scene.traverse(o => {
         if (o.isMesh) {
           o.castShadow = true; o.frustumCulled = false
@@ -41,8 +44,8 @@ export function loadCharAssets() {
       })
       A.ranger = r.scene
       for (const cl of [...g1.animations, ...g2.animations]) A.clips[cl.name] = cl
-      A.custs = cs.map(c => ({ scene: c.scene, clips: c.animations }))
-      for (const c of A.custs) c.scene.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false } })
+      cs.forEach((c, i) => { A.custs[CHAR_FILES[i]] = { scene: c.scene, clips: c.animations }; c.scene.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false } }) })
+      A.glasses = gl.scene
       A.ready = true
       return A
     }).catch(e => { A.failed = true; console.warn('char load failed', e); return A })
@@ -175,36 +178,133 @@ export class CharRunnerModel {
   dispose() { this.mixer.stopAllAction(); this.group.traverse(o => { if (o.geometry && !o.isSkinnedMesh) o.geometry.dispose() }) }
 }
 
-// 窓の客（上半身だけ見える）。番号で人を変える
+// 窓の客（上半身だけ見える）。客の種類ごとに人と小物と動きを変える
+//   normal: 右腕を振る／duf: 眼鏡・両手を前に出して小刻みに揺れる／polite: 何度も深くお辞儀／coins: がま口を振る
+//   photo: スマホを構えてフラッシュ／net: 長い柄の網を窓から突き出す
+const steel = () => new THREE.MeshStandardMaterial({ color: 0x9aa0a6, metalness: 0.6, roughness: 0.4 })
+// 小物は人の前に置く（客の足元が原点・メートル。+z が窓の外＝こちら側）。眼鏡だけ頭の骨に付ける
+function makeProps(type, root, bones, holder) {
+  const P = {}
+  if (type === 'duf' && A.glasses) {
+    const g = skClone(A.glasses); g.scale.setScalar(1.45); g.position.set(0, 0.44, 0.07)
+    root.add(g); root.updateMatrixWorld(true); bones.head && bones.head.attach(g); P.glasses = g
+  }
+  if (type === 'coins') {
+    // がま口（紫の布に金の口金）。胸の前でじゃらじゃら振る
+    const purse = new THREE.Group()
+    const bag = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10).scale(1.25, 0.85, 0.6), new THREE.MeshStandardMaterial({ color: 0x8a2f6b, roughness: 0.8 }))
+    const clasp = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.022, 6, 16, Math.PI), new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 0.8, roughness: 0.3 }))
+    clasp.position.y = 0.1
+    const balls = [-1, 1].map(sx => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), clasp.material); m.position.set(sx * 0.03, 0.2, 0); return m })
+    purse.add(bag, clasp, ...balls); purse.position.set(-0.28, 0.62, 0.55); holder.add(purse); P.purse = purse
+  }
+  if (type === 'photo') {
+    // スマホを顔の前に構える（こちらからは背面のレンズとフラッシュが見える）
+    const phone = new THREE.Group()
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.44, 0.03), new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.4 }))
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.04, 12), new THREE.MeshBasicMaterial({ color: 0x999999 }))
+    lens.position.set(0.07, 0.15, 0.017)
+    const case_ = new THREE.Mesh(new THREE.BoxGeometry(0.29, 0.47, 0.02), new THREE.MeshStandardMaterial({ color: 0xe86a9a, roughness: 0.7 }))
+    case_.position.z = -0.012
+    phone.add(case_, body, lens); phone.position.set(0.12, 1.02, 0.62); phone.rotation.z = -0.08; holder.add(phone); P.phone = phone; P.lens = lens
+  }
+  if (type === 'net') {
+    // 柄の長い網を窓から突き出す（こちらに輪が向く）
+    const net = new THREE.Group()
+    const wood = new THREE.MeshStandardMaterial({ color: 0xc9a46a, roughness: 0.8 })
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.6, 8), wood)
+    pole.rotation.x = Math.PI / 2; pole.position.z = 1.3
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.028, 6, 24), steel())
+    hoop.position.z = 2.6
+    const bag = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.7, 16, 1, true), new THREE.MeshStandardMaterial({ color: 0x2f8f6b, transparent: true, opacity: 0.7, side: THREE.DoubleSide, wireframe: true }))
+    bag.rotation.x = -Math.PI / 2; bag.position.z = 2.6 - 0.35
+    net.add(pole, hoop, bag); net.position.set(0.25, 0.55, 0.35); net.rotation.x = -0.12; holder.add(net); P.net = net
+  }
+  return P
+}
+
 export class Customer {
   constructor() {
-    this.group = new THREE.Group(); this.slots = []
-    this.cur = -1; this.t = 0
+    this.group = new THREE.Group(); this.slots = {}
+    this.cur = null; this.t = 0; this.react = null; this.reactT = 0
+    this.flash = new THREE.PointLight(0xffffff, 0, 9); this.flash.position.set(0, 1.4, 1.2); this.group.add(this.flash)
   }
-  show(i) {
-    if (!A.ready || !A.custs.length) return false
-    i = ((i % A.custs.length) + A.custs.length) % A.custs.length
-    if (i === this.cur) return true
-    for (const s of this.slots) s.root.visible = false
-    if (!this.slots[i]) {
-      const c = A.custs[i], root = skClone(c.scene)
-      const box = new THREE.Box3().setFromObject(root); const k = 1.6 / (box.max.y - box.min.y)
+  // o: 注文（cust・char）。読み込み前は false
+  show(o) {
+    if (!A.ready) return false
+    const type = o.cust || 'normal', name = type === 'normal' ? CUST_CHARS.normal[(o.char || 0) % CUST_CHARS.normal.length] : CUST_CHARS[type]
+    const key = type + ':' + name
+    if (key === this.cur) return true
+    if (!A.custs[name]) return false
+    for (const k in this.slots) this.slots[k].holder.visible = false
+    if (!this.slots[key]) {
+      const c = A.custs[name], root = skClone(c.scene)
+      const box = new THREE.Box3().setFromObject(root); const k = 1.9 / (box.max.y - box.min.y)
       root.scale.setScalar(k); root.position.y = -box.min.y * k
       const mixer = new THREE.AnimationMixer(root)
-      const idle = c.clips.find(a => a.name === 'idle'); if (idle) mixer.clipAction(idle).play()
-      const bones = {}; root.traverse(o => { if (o.name) bones[o.name] = o })
-      this.group.add(root)
-      this.slots[i] = { root, mixer, arm: bones['arm-right'], armL: bones['arm-left'], head: bones['head'] }
+      const acts = {}
+      for (const n of ['idle', 'holding-both', 'holding-right', 'emote-yes', 'emote-no']) { const cl = c.clips.find(a => a.name === n); if (cl) acts[n] = mixer.clipAction(cl) }
+      for (const n of ['emote-yes', 'emote-no']) if (acts[n]) { acts[n].setLoop(THREE.LoopRepeat) }
+      const bones = {}; root.traverse(o2 => { if (o2.name) bones[o2.name] = o2 })
+      const holder = new THREE.Group(); holder.add(root); this.group.add(holder)
+      const props = makeProps(type, root, bones, holder)
+      const base = { duf: 'holding-both', photo: 'holding-both', net: 'holding-both', coins: 'holding-right' }[type] || 'idle'
+      this.slots[key] = { root, holder, mixer, acts, base, cur: null, type, props, arm: bones['arm-right'], armL: bones['arm-left'], head: bones['head'], torso: bones['torso'] }
     }
-    this.slots[i].root.visible = true; this.cur = i
+    const sl = this.slots[key]
+    sl.holder.visible = true; this.cur = key; this.react = null; this.reactT = 0; this.t = 0
+    this.play(sl, sl.base)
     return true
   }
-  update(dt) {
+  play(sl, name) {
+    const a = sl.acts[name] || sl.acts.idle; if (!a || sl.cur === a) return
+    a.reset().fadeIn(0.15).play(); if (sl.cur) sl.cur.fadeOut(0.15); sl.cur = a
+  }
+  // 受け取った後の反応: good / ok / mess / late（怒っているかは angry）
+  setReact(kind, angry) {
+    const sl = this.slots[this.cur]; if (!sl) return
+    this.react = { kind, angry }; this.reactT = 0
+    this.play(sl, angry ? 'emote-no' : sl.type === 'duf' ? sl.base : 'emote-yes')
+    if (sl.type === 'photo' && !angry) this.flashT = 0
+  }
+  update(dt, near = false) {
     const s = this.slots[this.cur]; if (!s) return
-    this.t += dt
+    this.t += dt; this.reactT += dt
     s.mixer.update(dt)
-    // 右腕を頭の横まで上げて振る（Kenney Mini の腕の骨は x 軸で横に上がる）
-    if (s.arm) { s.arm.rotation.set(-2.75 + Math.sin(this.t * 9) * 0.35, 0, 0) }
-    if (s.head) s.head.rotation.z = Math.sin(this.t * 2.3) * 0.08
+    const t = this.t, R = this.react
+    s.holder.rotation.set(0, 0, 0); s.holder.position.x = 0
+    if (s.torso) s.torso.rotation.x = 0
+    this.flash.intensity = 0
+    if (R && R.angry) {
+      // 怒る: 両腕を振り上げて首を振る（どの客も。デュフフの人は怒らない）
+      if (s.arm) s.arm.rotation.set(-2.6 + Math.sin(t * 18) * 0.5, 0, 0)
+      if (s.armL) s.armL.rotation.set(-2.6 + Math.sin(t * 18 + 1.5) * 0.5, 0, 0)
+      return
+    }
+    if (s.type === 'normal') {
+      if (!R && s.arm) s.arm.rotation.set(-2.75 + Math.sin(t * 9) * 0.35, 0, 0)   // 右腕を頭の横まで上げて振る
+      if (s.head) s.head.rotation.z = Math.sin(t * 2.3) * 0.08
+    } else if (s.type === 'duf') {
+      // 小刻みに揺れて頷き続ける。受け取ると窓の中でくるっと回る
+      if (s.head) s.head.rotation.x = Math.sin(t * 16) * 0.13
+      s.holder.rotation.z = Math.sin(t * 3.1) * 0.07
+      s.holder.position.x = Math.sin(t * 1.7) * 0.12
+      if (R && R.kind === 'good') s.holder.rotation.y = Math.min(1, this.reactT / 0.8) * Math.PI * 2
+      if (R && (R.kind === 'mess' || R.kind === 'late') && s.head) s.head.rotation.x = 0.45
+    } else if (s.type === 'polite') {
+      // 何度も深くお辞儀（受け取ったらさらに深く・速く）
+      const sp = R ? 4.2 : 2.4, deep = R ? 0.85 : 0.6
+      if (s.torso) s.torso.rotation.x = Math.pow(Math.max(0, Math.sin(t * sp)), 2) * deep
+    } else if (s.type === 'coins') {
+      if (s.props.purse) { s.props.purse.rotation.z = Math.sin(t * 14) * 0.25; s.props.purse.position.y = 0.62 + Math.abs(Math.sin(t * 7)) * 0.06 }   // がま口をじゃらじゃら振る
+    } else if (s.type === 'photo') {
+      // 近づくと連写のフラッシュ。受け取ったら大きく1回
+      const k = (t * 3.3) % 1
+      if (near && k < 0.12) this.flash.intensity = 30
+      if (R && this.reactT < 0.15) this.flash.intensity = 60
+      if (s.props.lens) s.props.lens.material.color.setScalar(this.flash.intensity > 0 ? 1 : 0.6)
+    } else if (s.type === 'net') {
+      if (s.props.net) { s.props.net.rotation.y = Math.sin(t * 1.6) * 0.12; s.props.net.rotation.x = -0.12 + Math.sin(t * 2.3) * 0.05 }   // 網をゆらゆら
+    }
   }
 }

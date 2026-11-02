@@ -34,7 +34,7 @@ console.log(await p.evaluate(() => { const m = sky.dbg.model; return { cls: m.co
 await p.evaluate(() => sky.dbg.pause(false))
 // 届け先の窓の前へ
 await p.evaluate(() => {
-  const sh = sky.sh; sh.carrying = true; const o = sh.targets[sh.idx]
+  const sh = sky.sh; sky.dbg.teleport(sky.JOB.pick.near.x, 0, sky.JOB.pick.near.z); sky.dbg.step(2); const o = sh.cur
   sky.dbg.teleport(o.x + o.nx * 7, o.y - 1, o.z + o.nz * 7, Math.atan2(-o.nx, -o.nz))
   sky.me.grounded = false; sky.me.vy = 0
   sky.dbg.pause(true)

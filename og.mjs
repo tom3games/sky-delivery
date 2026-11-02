@@ -10,8 +10,10 @@ const p = await ctx.newPage()
 await p.goto('http://localhost:5395/'); await p.waitForFunction(() => window.__skyReady, null, { timeout: 20000 })
 await p.evaluate(() => sky.start(5)); await p.waitForTimeout(800)
 await p.evaluate(() => {
-  const o = sky.sh.targets[0], me = sky.me
   sky.dbg.pause(true)
+  sky.dbg.teleport(sky.JOB.pick.far.x, 0, sky.JOB.pick.far.z); sky.dbg.step(2)
+  const o = sky.sh.cur, me = sky.me
+  o.cust = 'duf'   // 窓にはデュフフの人
   // 窓の斜め前、少し下でワイヤーにぶら下がって窓へ振り上がる途中
   const sx = -o.nz, sz = o.nx
   sky.dbg.teleport(o.x + o.nx * 4.5 + sx * 3, o.y - 2.2, o.z + o.nz * 4.5 + sz * 3, Math.atan2(-o.nx, -o.nz))
@@ -27,7 +29,7 @@ await p.evaluate(() => {
   for (const id of ['hud', 'pause', 'title']) document.getElementById(id).classList.add('hidden')
   const d = document.createElement('div')
   d.innerHTML = `<div style="position:fixed;left:44px;top:0;display:flex;gap:6px;height:300px;z-index:30">${['空', '中', '出', '前'].map(c => `<div style="width:96px;background:#1f2a44;display:flex;justify-content:center;padding-top:60px;box-shadow:inset 0 -20px 30px rgba(0,0,0,.25)"><span style="font-family:'Yuji Syuku',serif;color:#f6f1e4;font-size:78px;line-height:1">${c}</span></div>`).join('')}</div>
-  <div style="position:fixed;left:44px;top:322px;z-index:30;font-family:'Klee One',sans-serif;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.8)"><div style="font-size:26px">1日だけ職場体験 #4　町中華 宙吊軒</div><div style="font-size:40px;margin-top:10px;line-height:1.35">速いと崩れて怒られる。<br>遅いとのびて怒られる。</div></div>`
+  <div style="position:fixed;left:44px;top:322px;z-index:30;font-family:'Klee One',sans-serif;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.8)"><div style="font-size:26px">1日だけ職場体験 #4　町中華 宙吊軒</div><div style="font-size:40px;margin-top:10px;line-height:1.35">4分で稼げるだけ稼げ。<br>遠い注文ほど高い。</div></div>`
   document.body.appendChild(d)
 })
 await p.waitForTimeout(600)

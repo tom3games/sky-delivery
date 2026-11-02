@@ -7,7 +7,7 @@ import { createWorld } from './shared/track.js'
 import { createRunner, stepRunner, RUN, rayHit } from './shared/runner.js'
 import { addTown } from './shared/town.js'
 import { createStreet, buildPoles } from './shared/street.js'
-import { JOB, createShift, stepShift, makeTargets } from './shared/delivery.js'
+import { JOB, createShift, stepShift, makeOrder, mulberry, settle, payData, money, earned, windowPool } from './shared/delivery.js'
 const ROOT = import.meta.dirname
 mkdirSync(ROOT + '/shots', { recursive: true })
 const PORT = 5390
@@ -132,23 +132,82 @@ await t('通行人・車にぶつかると少しこぼれてよろける（空�
   Object.assign(r, { x: c.x, z: c.z, y: c.y, vx: 0, vz: 0, grounded: true, stun: 0 }); r.events.length = 0
   const carHit = st.collide(r)
   st.cd = 0; Object.assign(r, { x: c.x, z: c.z, y: c.y + 6 }); const air = st.collide(r)
-  const sh = createShift(world, 1); const r2 = createRunner({ id: 'b', spawn: { x: JOB.shop.x, y: 0, z: JOB.shop.z } }); stepShift(sh, r2, 1 / 60)
+  const sh = createShift(world, 1); const r2 = createRunner({ id: 'b', spawn: { x: JOB.pick.near.x, y: 0, z: JOB.pick.near.z } }); stepShift(sh, r2, 1 / 60)
   const m0 = sh.mess; r2.events = [{ t: 'ped' }]; stepShift(sh, r2, 1 / 60); const mPed = sh.mess - m0
   const m1 = sh.mess; r2.events = [{ t: 'car' }]; stepShift(sh, r2, 1 / 60); const mCar = sh.mess - m1
   expect(pedHit === 'ped' && carHit === 'car' && !air && mPed >= 5 && mCar >= 8 && mCar < JOB.angryMess, JSON.stringify({ pedHit, carHit, air, mPed, mCar })); return { mPed, mCar }
 })
-await t('届け先: 5件（うち1件は一軒家の2階）・店から70〜210m・窓の前が広い道・近い順', () => {
-  const bad = []
-  for (let s = 1; s <= 30; s++) {
-    const tg = makeTargets(world, s)
-    if (tg.length !== 5) bad.push(s + ':n' + tg.length)
-    for (let i = 0; i < tg.length; i++) { const o = tg[i]; if (o.house) { if (o.dist > 210 || world.surfaceAt(o.x + o.nx * 7, o.z + o.nz * 7) !== 'road' || (i && tg[i - 1].dist > o.dist)) bad.push(s + ':h' + i); continue } if (o.dist < 70 || o.dist > 210 || world.surfaceAt(o.x + o.nx * 7, o.z + o.nz * 7) !== 'road' || (i && tg[i - 1].dist > o.dist)) bad.push(s + ':' + i) }
+// 店の輪に立って受け取り、窓の前へ瞬間移動して手渡しする（node だけで1件まわす）
+function deliverOnce(sh, tier = 'near') {
+  const r = createRunner({ id: 'v', spawn: { x: JOB.pick[tier].x, y: 0, z: JOB.pick[tier].z } })
+  stepShift(sh, r, 1 / 60); const o = sh.cur
+  if (!o) return null
+  Object.assign(r, { x: o.x + o.nx * 2, y: o.y - 1.1, z: o.z + o.nz * 2, vx: 0, vy: 0, vz: 0 }); r.events = []
+  stepShift(sh, r, 1 / 60)
+  return o
+}
+await t('注文は時間内なら途切れない: 30件続けて届けても次の2件（近場・遠方）が必ず出ている（2026-11-03 本人「時間内なら無限に」）', () => {
+  const sh = createShift(world, 4); const bad = []
+  for (let i = 0; i < 30; i++) { const o = deliverOnce(sh, i % 3 ? 'near' : 'far'); if (!o) bad.push('pick' + i); if (!sh.offers || !sh.offers.near || !sh.offers.far) bad.push('offers' + i) }
+  expect(!bad.length && sh.results.length === 30 && !sh.over && sh.results.every(r => r.how === 'hand'), JSON.stringify({ bad, n: sh.results.length, over: sh.over })); return { delivered: sh.results.length }
+})
+await t('遠い注文: 手前の輪＝近場 70〜240m、奥の輪＝遠方 280〜580m。遠方は運河の向こう・高層の上の階・街の外れが出て、代金も時間も多い', () => {
+  const rnd = mulberry(9), zones = {}, bad = []
+  let nf = 0, ff = 0, nl = 0, fl = 0
+  for (let i = 0; i < 400; i++) {
+    const n = makeOrder(world, rnd, 'near'), f = makeOrder(world, rnd, 'far')
+    if (!n.house && (n.dist < 70 || n.dist > 240)) bad.push('n' + Math.round(n.dist))
+    if (f.dist < 280 || f.dist > 580) bad.push('f' + Math.round(f.dist))
+    if (world.surfaceAt(f.x + f.nx * 7, f.z + f.nz * 7) !== 'road') bad.push('road')
+    zones[f.zone] = (zones[f.zone] || 0) + 1
+    nf += n.fee + n.tipMax; ff += f.fee + f.bonus + f.tipMax; nl += n.limit; fl += f.limit
   }
-  expect(!bad.length, bad.join(',')); return { seeds: 30 }
+  const r = { zones, nearYen: Math.round(nf / 400), farYen: Math.round(ff / 400), nearSec: Math.round(nl / 400), farSec: Math.round(fl / 400) }
+  expect(!bad.length && zones.canal > 20 && zones.tower > 20 && zones.edge > 20 && r.farYen > r.nearYen * 2.2 && r.farSec > r.nearSec * 1.8, JSON.stringify({ bad: bad.slice(0, 5), ...r })); return r
+})
+await t('客の種類: デュフフの人はたまに（4〜10%）、ほか5種もそれぞれ出る。1件目は普通の客', () => {
+  const rnd = mulberry(3), c = {}
+  for (let i = 0; i < 4000; i++) { const o = makeOrder(world, rnd, i % 2 ? 'far' : 'near'); c[o.cust] = (c[o.cust] || 0) + 1 }
+  const firsts = Array.from({ length: 50 }, (_, s) => createShift(world, s + 1)).every(sh => sh.offers.near.cust === 'normal' && sh.offers.far.cust === 'normal')
+  const p = k => (c[k] || 0) / 4000
+  expect(p('duf') > 0.04 && p('duf') < 0.1 && ['polite', 'coins', 'photo', 'net'].every(k => p(k) > 0.07) && p('normal') > 0.4 && firsts, JSON.stringify({ c, firsts })); return { duf: +(p('duf') * 100).toFixed(1) + '%', ...c }
+})
+await t('客ごとの払い方と怒り方: デュフフは怒らず 2222/222/22円、小銭は端数・怒っても1円、撮る人は崩れ55で怒り・きれいなら1.6倍、丁寧な人は遅れで怒らない、網の人は10m先から受け取る', () => {
+  const o = c => ({ cust: c, tipMax: 500, limit: 30, v: 0.5 })
+  const r = {
+    dufGood: settle(o('duf'), 10, 0, 'hand', false), dufOk: settle(o('duf'), 40, 2, 'hand', false), dufBad: settle(o('duf'), 95, 20, 'hand', false),
+    coins: settle(o('coins'), 30, 0, 'hand', false), coinsAngry: settle(o('coins'), 90, 0, 'hand', false),
+    photoClean: settle(o('photo'), 10, 0, 'hand', false), photoNormal: settle(o('normal'), 10, 0, 'hand', false), photo60: settle(o('photo'), 60, 0, 'hand', false),
+    politeLate: settle(o('polite'), 10, 40, 'hand', false), normalLate: settle(o('normal'), 10, 40, 'hand', false)
+  }
+  const rnd = mulberry(1); let net = null; for (let i = 0; i < 300 && !net; i++) { const q = makeOrder(world, rnd, 'near'); if (q.cust === 'net') net = q }
+  const ok = r.dufGood.tip === 2222 && !r.dufGood.angry && r.dufGood.style === 'jackpot' && r.dufOk.tip === 222 && r.dufBad.tip === 22 && !r.dufBad.angry
+    && r.coins.tip % 10 !== 0 && r.coinsAngry.angry && r.coinsAngry.tip === 1
+    && r.photoClean.tip === Math.round(r.photoNormal.tip * 1.6) && r.photo60.angry && !settle(o('normal'), 60, 0, 'hand', false).angry
+    && !r.politeLate.angry && r.normalLate.angry && net && net.handR === JOB.netR && JOB.netR >= 10
+  expect(ok, JSON.stringify(r)); return { duf: [2222, 222, 22], coins: r.coins.tip, photo: r.photoClean.tip }
+})
+await t('網の人には窓から8m・少し速くても渡せる。普通の客は8mでは渡せない', () => {
+  const sh = createShift(world, 2); deliverOnce(sh)   // 1件目（練習）を済ませる
+  const r = createRunner({ id: 'n', spawn: { x: JOB.pick.near.x, y: 0, z: JOB.pick.near.z } }); stepShift(sh, r, 1 / 60)
+  const o = sh.cur
+  const at8 = c => { o.cust = c; o.handR = c === 'net' ? JOB.netR : JOB.handR; o.handSpeed = c === 'net' ? JOB.netSpeed : JOB.handSpeed; const n0 = sh.results.length; Object.assign(r, { x: o.x + o.nx * 8, y: o.y - 1.1, z: o.z + o.nz * 8, vx: 18 * o.nz, vy: 0, vz: -18 * o.nx, grounded: false }); r.events = []; stepShift(sh, r, 1 / 60); return sh.results.length > n0 }
+  const normal = at8('normal'), net = at8('net')
+  expect(!normal && net, JSON.stringify({ normal, net })); return { normal, net }
+})
+await t('稼ぎの計算: 手取り = 基本給 + 配達手当 + 遠方手当 + チップ − クレーム。持ったまま時間切れの1件は終わった時だけ引く', () => {
+  const sh = createShift(world, 6)
+  deliverOnce(sh, 'near'); deliverOnce(sh, 'far'); deliverOnce(sh, 'far')
+  const R = sh.results, want = JOB.wage * JOB.hours + R.reduce((a, r) => a + r.fee + r.bonus + r.tip - (r.angry ? JOB.claim : 0), 0)
+  const r = createRunner({ id: 'x', spawn: { x: JOB.pick.near.x, y: 0, z: JOB.pick.near.z } }); stepShift(sh, r, 1 / 60)
+  const during = money(sh)
+  sh.t = JOB.shiftSec; stepShift(sh, r, 1 / 60)
+  const after = money(sh), p = payData(sh)
+  expect(during === want && after === want - JOB.claim && sh.over && p.undone === 1 && R[1].bonus === JOB.farBonus && earned(sh) === after - JOB.wage * JOB.hours, JSON.stringify({ during, want, after, p })); return { net: after, rows: p.pay.map(x => x.label) }
 })
 await t('崩れ: 速く飛ぶ・強い着地は崩れる、ゆっくり歩くのは崩れない', () => {
   const sh = createShift(world, 1)
-  const r = createRunner({ id: 'a', spawn: { x: JOB.shop.x, y: 0, z: JOB.shop.z } })
+  const r = createRunner({ id: 'a', spawn: { x: JOB.pick.near.x, y: 0, z: JOB.pick.near.z } })
   stepShift(sh, r, 1 / 60); expect(sh.carrying, 'no pickup')
   r.vx = 3; for (let i = 0; i < 120; i++) { r.events.length = 0; stepShift(sh, r, 1 / 60) }
   const walk = sh.mess
@@ -158,15 +217,15 @@ await t('崩れ: 速く飛ぶ・強い着地は崩れる、ゆっくり歩くの
   const land = sh.mess - fly
   expect(walk === 0 && fly > 1 && land > 10, JSON.stringify({ walk, fly, land })); return { walk, fly: +fly.toFixed(1), land: +land.toFixed(1) }
 })
-await t('bot: 上手い遊び方が丁寧すぎ・速すぎより稼ぐ／下手な人も平均3件以上／飛ぶ方が走るより早く届く（12日ずつ）', () => {
-  const out = execFileSync(process.execPath, ['tools/sim.mjs', '12'], { cwd: ROOT, encoding: 'utf8', timeout: 600000 })
-  const avg = k => +out.match(new RegExp(k + '\\s+平均 (\\d+)'))[1]
-  const r = { careful: avg('careful'), rush: avg('rush'), skilled: avg('skilled'), clumsy: avg('clumsy') }
-  const done = k => +out.match(new RegExp(k + '\\s+平均.*?届けた 平均([\\d.]+)件'))[1]
-  r.clumsyDone = done('clumsy'); r.runSec = +out.match(/careful.*?手渡しまで 平均([\d.]+)秒/)[1]; r.flySec = +out.match(/skilled.*?手渡しまで 平均([\d.]+)秒/)[1]
-  expect(r.skilled > r.careful && r.skilled > r.rush, JSON.stringify(r))
-  expect(r.clumsyDone >= 3, '下手な人が平均3件届かない ' + JSON.stringify(r))
-  expect(r.flySec < r.runSec, '飛ぶ方が遅い ' + JSON.stringify(r))
+await t('bot（16日ずつ）: 初めての人（下手・歩き）も平均3件以上で5,000円超え／上手い人は近場だけ・遠方だけ・混ぜるのどれでも歩きより稼ぐ／近場だけと遠方だけの差は±25%以内（どっちを選んでも遊べる）', () => {
+  const run = (env = {}) => execFileSync(process.execPath, ['tools/sim.mjs', '16', ...(env.k ? [env.k] : [])], { cwd: ROOT, encoding: 'utf8', timeout: 900000, env: { ...process.env, ...(env.pref ? { PREF: env.pref } : {}) } })
+  const out = run(), outN = run({ k: 'skilled', pref: 'near' }), outF = run({ k: 'skilled', pref: 'far' })
+  const avg = (o, k) => +o.match(new RegExp(k + '\\s+平均 (\\d+)'))[1]
+  const done = (o, k) => +o.match(new RegExp(k + '\\s+平均.*?届けた 平均([\\d.]+)件'))[1]
+  const r = { careful: avg(out, 'careful'), clumsy: avg(out, 'clumsy'), skilled: avg(out, 'skilled'), rush: avg(out, 'rush'), nearOnly: avg(outN, 'skilled'), farOnly: avg(outF, 'skilled'), clumsyDone: done(out, 'clumsy') }
+  expect(r.clumsyDone >= 3 && r.clumsy > 5000 && r.careful > 5000, '初めての人が稼げない ' + JSON.stringify(r))
+  expect([r.skilled, r.nearOnly, r.farOnly].every(v => v > r.careful * 1.25), '上手い人が歩きと変わらない ' + JSON.stringify(r))
+  expect(Math.abs(r.nearOnly - r.farOnly) / Math.max(r.nearOnly, r.farOnly) < 0.25, '近場か遠方の片方だけが強い ' + JSON.stringify(r))
   return r
 })
 await t('AI臭さチェック NG 0', () => {
@@ -198,11 +257,13 @@ await t('タイトルの後ろで CPU が飛んでいる', async () => {
   const moved = await p.evaluate(() => document.querySelector('#title').classList.contains('hidden') === false)
   expect(moved, 'title hidden')
 })
-await t('出勤: 店で料理を受け取り、伝票に品名・届け先・残り時間が出る', async () => {
+await t('出勤: 伝票に近場と遠方の2つの注文が出る。手前の輪に入ると近場を受け取り、品名・届け先・残り時間が出る', async () => {
   await p.click('#btnStart')
   await p.evaluate(() => sky.dbg.pause(true)); await p.evaluate(() => sky.dbg.step(3))
-  const r = await p.evaluate(() => ({ carrying: sky.sh.carrying, dish: document.getElementById('tDish').textContent, to: document.getElementById('tTo').textContent, time: document.getElementById('tTime').textContent, pick: sky.log.some(e => e.t === 'pickup') }))
-  expect(r.carrying && r.pick && r.dish.length > 1 && /階/.test(r.to) && /秒/.test(r.time), JSON.stringify(r)); return r
+  const before = await p.evaluate(() => ({ carrying: sky.sh.carrying, to: document.getElementById('tTo').textContent, note: document.getElementById('tNote').textContent, earn: document.getElementById('tEarn').textContent }))
+  await p.evaluate(() => { sky.dbg.teleport(sky.JOB.pick.near.x, 0, sky.JOB.pick.near.z); sky.dbg.step(3) })
+  const r = await p.evaluate(() => ({ carrying: sky.sh.carrying, tier: sky.sh.cur && sky.sh.cur.tier, dish: document.getElementById('tDish').textContent, to: document.getElementById('tTo').textContent, time: document.getElementById('tTime').textContent, pick: sky.log.some(e => e.t === 'pickup') }))
+  expect(!before.carrying && /近場/.test(before.to) && /遠方/.test(before.note) && /稼ぎ/.test(before.earn) && r.carrying && r.tier === 'near' && r.pick && r.dish.length > 1 && /階/.test(r.to) && /秒/.test(r.time), JSON.stringify({ before, r })); return { before: before.to + ' / ' + before.note, to: r.to }
 })
 await t('画面タッチ: 近くのビルに掛かる／遠すぎる所は、その向きの届く所に掛かるか×', async () => {
   const r = await p.evaluate(() => {
@@ -228,24 +289,24 @@ await t('画面タッチ: 近くのビルに掛かる／遠すぎる所は、そ
 })
 await t('手渡し: 窓の前でゆっくり寄ると届く。チップと客の一言が出る', async () => {
   const r = await p.evaluate(() => {
-    const o = sky.sh.targets[sky.sh.idx]; sky.log.length = 0
+    const o = sky.sh.cur; sky.log.length = 0
     sky.dbg.teleport(o.x + o.nx * 2, o.y - 1.1, o.z + o.nz * 2); sky.dbg.step(2)
     const d = sky.log.find(e => e.t === 'deliver')
-    return { d, say: document.getElementById('say').textContent, idx: sky.sh.idx }
+    return { d, say: document.getElementById('say').textContent, idx: sky.sh.idx, offers: !!sky.sh.offers, stay: sky.dbg.target.visible, earn: document.getElementById('tEarn').textContent }
   })
-  expect(r.d && r.d.how === 'hand' && !r.d.angry && r.d.tip > 0 && r.say.length > 3 && r.idx === 1, JSON.stringify(r)); return { tip: r.d.tip, say: r.say }
+  expect(r.d && r.d.how === 'hand' && !r.d.angry && r.d.tip > 0 && r.say.length > 3 && r.idx === 1 && r.offers && r.stay && /[1-9]/.test(r.earn), JSON.stringify(r)); return { tip: r.d.tip, say: r.say, earn: r.earn }
 })
 await t('店に戻らないと次を受け取れない／戻ると受け取る', async () => {
   const r = await p.evaluate(() => {
     const before = sky.sh.carrying
-    sky.dbg.teleport(sky.JOB.shop.x - 2, 0, sky.JOB.shop.z); sky.dbg.step(2)
-    return { before, after: sky.sh.carrying }
+    sky.dbg.teleport(sky.JOB.pick.far.x, 0, sky.JOB.pick.far.z); sky.dbg.step(2)
+    return { before, after: sky.sh.carrying, tier: sky.sh.cur && sky.sh.cur.tier, to: document.getElementById('tTo').textContent }
   })
-  expect(!r.before && r.after, JSON.stringify(r))
+  expect(!r.before && r.after && r.tier === 'far' && /運河|高層|外れ|遠く/.test(r.to), JSON.stringify(r)); return r.to
 })
 await t('速すぎると受け取れない（止まって）', async () => {
   const r = await p.evaluate(() => {
-    const o = sky.sh.targets[sky.sh.idx]; sky.log.length = 0
+    const o = sky.sh.cur; o.cust = 'normal'; o.handR = sky.JOB.handR; o.handSpeed = sky.JOB.handSpeed; sky.log.length = 0
     sky.dbg.teleport(o.x + o.nx * 2, o.y - 1.1, o.z + o.nz * 2); Object.assign(sky.me, { vx: -o.nx * 25 + o.nz * 10, vz: -o.nz * 25 + o.nx * 10, grounded: false }); sky.dbg.step(1)
     return { fast: sky.log.some(e => e.t === 'tooFast'), deliv: sky.log.some(e => e.t === 'deliver') }
   })
@@ -257,16 +318,47 @@ await t('投げるボタンが無い・F キーでも投げない（2026-11-02 �
   const r = await p.evaluate(() => { sky.log.length = 0; sky.dbg.step(30); return { thrown: !!sky.sh.thrown, ev: sky.log.some(e => e.t === 'throw') } })
   expect(!btn && !r.thrown && !r.ev, JSON.stringify({ btn: !!btn, ...r }))
 })
-await t('最後まで行くと給料明細が出る（画像の保存・Xのリンク）', async () => {
-  await p.evaluate(() => { sky.dbg.step(60 * 200) }); await p.evaluate(() => sky.dbg.pause(false)); await p.waitForTimeout(2500)
-  const r = await p.evaluate(() => ({ mode: sky.mode, shown: !document.getElementById('result').classList.contains('hidden'), w: document.getElementById('slip').width, post: document.getElementById('btnPost').href, net: window.__lastNet }))
-  expect(r.mode === 'result' && r.shown && r.w === 1080 && /twitter\.com\/intent/.test(r.post), JSON.stringify(r)); return { net: r.net }
+await t('デュフフの人: 窓の客がその人（眼鏡）になり、近づくと「デュフ」、渡すと台詞もデュフフで、チップは 2222/222/22 円のどれか', async () => {
+  const r = await p.evaluate(() => {
+    if (!sky.sh.cur) { sky.dbg.teleport(sky.JOB.pick.near.x, 0, sky.JOB.pick.near.z); sky.dbg.step(2) }
+    sky.log.length = 0
+    sky.dbg.lookAtWindow('duf', 15); sky.dbg.step(1)
+    const near = document.getElementById('say').textContent
+    const o = sky.sh.cur; sky.dbg.teleport(o.x + o.nx * 2, o.y - 1.1, o.z + o.nz * 2); sky.dbg.step(2)
+    const d = sky.log.find(e => e.t === 'deliver'), say = document.getElementById('say').textContent
+    const ps = sky.dbg.target.userData.person
+    return { near, say, tip: d && d.tip - (d.early || 0), cust: d && d.cust, slot: ps.cur, glasses: !!(ps.slots[ps.cur] && ps.slots[ps.cur].props.glasses), stay: sky.dbg.target.visible }
+  })
+  expect(/デュフ/.test(r.near) && /デュ/.test(r.say) && [2222, 222, 22].includes(r.tip) && r.cust === 'duf' && /^duf:/.test(r.slot) && r.glasses && r.stay, JSON.stringify(r)); return { say: r.say, tip: r.tip }
+})
+await t('ほかの客も見た目と台詞が変わる（丁寧・小銭・撮る・網）。小銭の人のチップは「1円玉 N枚」', async () => {
+  const out = {}
+  for (const c of ['polite', 'coins', 'photo', 'net']) {
+    out[c] = await p.evaluate(c => {
+      sky.dbg.teleport(sky.JOB.pick.near.x, 0, sky.JOB.pick.near.z); sky.dbg.step(2)
+      sky.log.length = 0; sky.dbg.lookAtWindow(c, 15); sky.dbg.step(1)
+      const near = document.getElementById('say').textContent, note = document.getElementById('tNote').textContent
+      const o = sky.sh.cur; sky.dbg.teleport(o.x + o.nx * 2, o.y - 1.1, o.z + o.nz * 2); sky.dbg.step(2)
+      const ps = sky.dbg.target.userData.person
+      return { near, note, say: document.getElementById('say').textContent, slot: ps.cur, props: Object.keys((ps.slots[ps.cur] || {}).props || {}) }
+    }, c)
+  }
+  const ok = /恐れ入|ようこそ/.test(out.polite.near) && /1円玉 \d+枚/.test(out.coins.say) && out.coins.props.includes('purse') && out.photo.props.includes('phone') && out.net.props.includes('net') && /網/.test(out.net.note)
+    && new Set(Object.values(out).map(v => v.slot)).size === 4
+  expect(ok, JSON.stringify(out)); return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.say]))
+})
+await t('最後まで行くと給料明細が出る（件数が多い日も、画像の保存・Xのリンク）', async () => {
+  await p.evaluate(() => { for (let i = 0; i < 9; i++) { sky.dbg.teleport(sky.JOB.pick.near.x, 0, sky.JOB.pick.near.z); sky.dbg.step(2); const o = sky.sh.cur; sky.dbg.teleport(o.x + o.nx * 2, o.y - 1.1, o.z + o.nz * 2); sky.dbg.step(2) } })
+  await p.evaluate(() => { sky.dbg.step(60 * (sky.JOB.shiftSec + 5)) }); await p.evaluate(() => sky.dbg.pause(false)); await p.waitForTimeout(2500)
+  const r = await p.evaluate(() => ({ mode: sky.mode, shown: !document.getElementById('result').classList.contains('hidden'), w: document.getElementById('slip').width, post: decodeURIComponent(document.getElementById('btnPost').href), net: window.__lastNet, n: sky.sh.results.length }))
+  await p.screenshot({ path: ROOT + '/shots/result-many.png' })
+  expect(r.mode === 'result' && r.shown && r.w === 1080 && /twitter\.com\/intent/.test(r.post) && r.n >= 15 && /4分間に\d+件/.test(r.post), JSON.stringify(r)); return { net: r.net, delivered: r.n }
 })
 await t('何もしない1日は最低の判定（不採用・届けた0件）', async () => {
   await p.click('#btnAgain'); await p.evaluate(() => sky.dbg.pause(true))
-  await p.evaluate(() => { sky.dbg.teleport(200, 0, 1300); sky.dbg.step(60 * 182) }); await p.evaluate(() => sky.dbg.pause(false)); await p.waitForTimeout(2500)
+  await p.evaluate(() => { sky.dbg.teleport(200, 0, 1300); sky.dbg.step(60 * (sky.JOB.shiftSec + 2)) }); await p.evaluate(() => sky.dbg.pause(false)); await p.waitForTimeout(2500)
   const r = await p.evaluate(() => ({ mode: sky.mode, net: window.__lastNet, done: sky.sh.results.length }))
-  expect(r.mode === 'result' && r.done === 0 && r.net < 3500, JSON.stringify(r)); return r
+  expect(r.mode === 'result' && r.done === 0 && r.net < 5000, JSON.stringify(r)); return r
 })
 await t('音: 鳴らした回数が数えられ、テスト中は実際に無音', async () => {
   const r = await p.evaluate(() => ({ calls: window.__soundCalls, played: Object.keys(Snd.played).length, ok: window.__muteOk() }))
@@ -337,6 +429,10 @@ await t('WebKit: 巻き取りボタンが無い・大きいワイヤーボタン
 await t('WebKit: エラーなし', async () => { expect(wp.errs.length === 0, wp.errs.join('|')) })
 await wb.close()
 server.kill()
+await t('向き: カメラを0〜720°以上回しても、地上・空中・ワイヤー中でスティックの上下左右＝画面の上下左右（84通り。2026-11-02 しっぽ取りで見つかった不具合）', () => {
+  const out = execFileSync(process.execPath, ['_dir.mjs'], { cwd: ROOT, encoding: 'utf8', timeout: 600000 })
+  const j = JSON.parse(out.trim().split('\n').pop()); expect(j.ng === 0 && !j.errs.length, out.slice(-400)); return { cases: j.total }
+})
 console.log(results.join('\n'))
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

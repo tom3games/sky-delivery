@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>空中出前 宙吊軒 | 1日だけ職場体験</title>
-<meta name="description" content="町中華の出前をワイヤーで空から届ける3Dバカゲー。速く飛ぶとラーメンが崩れて怒られる、ゆっくりだと遅れて怒られる。スマホのブラウザで遊べる。">
+<meta name="description" content="町中華の出前をワイヤーで空から届ける3Dバカゲー。4分のあいだ注文は途切れない。遠い注文ほど高いが、速く飛ぶとラーメンが崩れて怒られる。変な客も来る。スマホのブラウザで遊べる。">
 <meta property="og:type" content="website">
 <meta property="og:title" content="空中出前 宙吊軒 | 1日だけ職場体験">
-<meta property="og:description" content="ワイヤーで空から出前。速いと崩れて怒られる、遅いとのびて怒られる。スマホのブラウザで遊べる。">
-<meta property="og:image" content="https://tom3games.github.io/sky-delivery/og.png?v=1">
+<meta property="og:description" content="ワイヤーで空から出前。4分で稼げるだけ稼ぐ。遠い注文ほど高い、崩すと怒られる。スマホのブラウザで遊べる。">
+<meta property="og:image" content="https://tom3games.github.io/sky-delivery/og.png?v=2">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:url" content="https://tom3games.github.io/sky-delivery/">
@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Klee+One:wght@600&family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
 </head>
 <body>
@@ -63,8 +63,9 @@
     <div class="t-head"><span data-t="ticketHead"></span><span id="tNo"></span></div>
     <div id="tDish" class="t-dish"></div>
     <div id="tTo" class="t-to"></div>
+    <div id="tNote" class="t-note"></div>
     <div class="t-row"><span id="tDist"></span><b id="tTime"></b></div>
-    <div class="t-foot"><span data-t="shiftLeft"></span> <span id="tShift"></span></div>
+    <div class="t-foot"><span><span data-t="shiftLeft"></span> <span id="tShift"></span></span><span id="tEarn" class="t-earn"></span></div>
   </div>
   <div id="bowl" class="bowl" aria-hidden="true">
     <svg viewBox="0 0 120 90">
@@ -142,6 +143,6 @@
 })();
 </script>
 <script src="sfx.js?v=2"></script>
-<script type="module" src="js/game.js?v=5"></script>
+<script type="module" src="js/game.js?v=6"></script>
 </body>
 </html>

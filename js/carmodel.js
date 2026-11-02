@@ -1,7 +1,7 @@
 // 車の見た目（実在の車種ではない架空のクーペ）。断面を前後につないだ曲面の車体に、
 // クリア塗装の材質で空を映す。ぶつけた場所の頂点を押し込んで凹ませ、損傷で部品が外れる。
 import * as THREE from 'three'
-import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js'
+import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js?v=6'
 
 // 車種ごとの寸法（m）。W=半幅, L=半長, H=屋根の高さ（車の原点から）, hood=ボンネットの高さ
 const SHAPES = {

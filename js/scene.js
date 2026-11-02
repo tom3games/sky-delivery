@@ -1,12 +1,12 @@
 // コースの見た目を作る。形はすべてコードで組む（外部モデルなし）。
 import * as THREE from 'three'
-import { Builder, textTexture } from './geo.js'
-import { pbr, boxMap, terrainMaterial } from './look.js'
-import { buildForest, buildTufts } from './trees.js'
-import { Q } from './quality.js'
-import { createFacade } from './facade.js'
-import { terrain, toWorld, slabTop, forestDensity } from '../shared/track.js'
-import { DESTRUCT } from '../shared/config.js'
+import { Builder, textTexture } from './geo.js?v=6'
+import { pbr, boxMap, terrainMaterial } from './look.js?v=6'
+import { buildForest, buildTufts } from './trees.js?v=6'
+import { Q } from './quality.js?v=6'
+import { createFacade } from './facade.js?v=6'
+import { terrain, toWorld, slabTop, forestDensity } from '../shared/track.js?v=6'
+import { DESTRUCT } from '../shared/config.js?v=6'
 
 const PAL = {
   grass: 0x6f9a4a, grass2: 0x86ab55, dirt: 0x9a7a52, rock: 0x8a6a55, rockDark: 0x5e4a3f, city: 0x8a8e94,
@@ -356,7 +356,7 @@ export function buildScene(scene, world) {
       return true
     }
     // コースの中の木は当たり判定と同じ位置（world.trees）。外周の山は見た目だけ（街は外周も建物）
-    for (const t of world.trees) spots.push(t)
+    for (const t of world.trees) spots.push(t.gone ? { ...t, s: 0.0001 } : t)   // gone: 店の前の木（town.js で抜いた）。順番は折れる木の番号なので詰めずに小さくする
     const SP = 9
     if (!CITY) for (let z = BOUNDS.z0 - 80; z < BOUNDS.z1 + 80; z += SP) for (let x = BOUNDS.x0 - 80; x < BOUNDS.x1 + 80; x += SP) {
       const px = x + (rnd() - 0.5) * SP * 0.9, pz = z + (rnd() - 0.5) * SP * 0.9

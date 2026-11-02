@@ -28,7 +28,15 @@
 - snd/jingles_SAX01.mp3: 85 Short music jingles / Kenney / CC0
 - snd/jingles_SAX03.mp3: 85 Short music jingles / Kenney / CC0
 - snd/jingles_PIZZA07.mp3: 85 Short music jingles / Kenney / CC0
+- snd/coins_1.mp3: 50 RPG sound effects / Kenney / CC0
+- snd/coins_2.mp3: 50 RPG sound effects / Kenney / CC0
+- snd/coins_3.mp3: 54 Casino sound effects (cards, dice, chips) / Kenney / CC0
+- snd/squeak_1.mp3: Squeak toy sounds / bart / CC0
+- snd/squeak_2.mp3: Squeak toy sounds / bart / CC0
+- snd/squeak_3.mp3: Squeak toy sounds / bart / CC0
+- snd/cloth_1.mp3: 50 RPG sound effects / Kenney / CC0
+- snd/cloth_2.mp3: 50 RPG sound effects / Kenney / CC0
 
 ## 人物（3D）
 - assets/chars/Ranger.glb, Rig_Medium_*.glb: KayKit Adventurers 2.0 / Kay Lousberg / CC0（色は塗り替え）
-- assets/chars/character-*.glb, Textures/colormap.png: Kenney Mini Characters / Kenney / CC0
+- assets/chars/character-*.glb, aid-glasses.glb, Textures/colormap.png: Kenney Mini Characters / Kenney / CC0（窓の客。デュフフの人の眼鏡も）

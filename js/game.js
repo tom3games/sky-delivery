@@ -1,23 +1,23 @@
 // 空中出前 宙吊軒（1日だけ職場体験 #4）。WIRE ESCAPE のワイヤーと街を使った出前ゲーム
 // 速く飛ぶと料理が崩れて怒られる、ゆっくりだと遅れて怒られる
 import * as THREE from 'three'
-import { GAME } from '../shared/config.js'
-import { createWorld } from '../shared/track.js'
-import { buildScene } from './scene.js'
-import { FX } from './fx.js'
-import { loadSky, setAniso } from './look.js'
-import { Q } from './quality.js'
-import { RunnerModel } from './runnermodel.js'
-import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js'
-import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js'
-import { JOB, createShift, stepShift, curOrder, payData, money } from '../shared/delivery.js'
-import { createBot, botInput } from '../shared/bot.js'
-import { drawPayslip, totals } from './payslip.js'
-import { createStreet, buildPoles } from '../shared/street.js'
-import { addTown } from '../shared/town.js'
-import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js'
-import { carLights } from './carmodel.js'
-import { LOW } from './quality.js'
+import { GAME } from '../shared/config.js?v=6'
+import { createWorld } from '../shared/track.js?v=6'
+import { buildScene } from './scene.js?v=6'
+import { FX } from './fx.js?v=6'
+import { loadSky, setAniso } from './look.js?v=6'
+import { Q } from './quality.js?v=6'
+import { RunnerModel } from './runnermodel.js?v=6'
+import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=6'
+import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js?v=6'
+import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=6'
+import { createBot, botInput } from '../shared/bot.js?v=6'
+import { drawPayslip, totals } from './payslip.js?v=6'
+import { createStreet, buildPoles } from '../shared/street.js?v=6'
+import { addTown, clearShopFront } from '../shared/town.js?v=6'
+import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=6'
+import { carLights } from './carmodel.js?v=6'
+import { LOW } from './quality.js?v=6'
 
 const $ = id => document.getElementById(id)
 const STEP = GAME.step
@@ -27,63 +27,98 @@ const store = { get: k => { try { return localStorage.getItem(k) } catch (e) { r
 // ---------------------------------------------------------------- 文言（日英）
 const T = {
   ja: {
-    series: '1日だけ職場体験 #4', logo: '空中出前', masterName: '店主', masterLine: '出前は空から行ってくれ。のびても崩れても文句言われるで。',
+    series: '1日だけ職場体験 #4', logo: '空中出前', masterName: '店主', masterLine: '4分で稼げるだけ稼いでこい。遠いほど高いで',
     start: '出勤する', how: '仕事の説明', lang: 'EN', more: 'ほかのゲーム', muteOn: '音 入', muteOff: '音 切', loading: '仕込み中',
     howTitle: '出前の心得', ok: 'わかった',
     howItems: [
       'ビルを<b>タッチ</b>でワイヤー。大きいボタンなら前の上へ自動で',
+      '店の前の<b>手前の輪</b>は近場、<b>奥の輪</b>は遠方。遠いほど高い',
       '急ぐほど<b>丼の中身が減る</b>。遅れても怒られる',
-      '赤い提灯の窓に<b>そっと寄れば</b>手渡し'
+      '4分のあいだ注文は途切れない。<b>稼げるだけ稼ぐ</b>'
     ],
     hintWire: '<small>こつ</small>ビルをタッチするとワイヤーが出る', hintWirePc: '<small>こつ</small>ビルをクリック（か E）でワイヤー',
     keysPc: 'PC: WASD・矢印で移動　クリックでワイヤー（E は前の上へ自動）　Space ジャンプ　ドラッグで見回す',
     keysTouch: '左のスティックで移動、画面をタッチでワイヤー、なぞると見回す。壁に向かって走ると登れる',
     credit: '音: Kenney, rubberduck, artisticdude, poinl, Almitory ほか（CC0）。詳しくは CREDITS.md',
-    ticketHead: '御伝票', shiftLeft: 'シフト残り', toShop: '店に戻って受け取る', shopName: '宙吊軒',
+    ticketHead: '御伝票', shiftLeft: '残り', toShop: '店に戻って受け取る', shopName: '宙吊軒', nth: n => `${n}件目`, earn: y => `稼ぎ ${y.toLocaleString()}円`,
+    pickHead: 'どっちを持っていく', offerNear: (d, m, y) => `近場 ${m}m ${y.toLocaleString()}円`, offerFar: (d, m, y) => `遠方 ${m}m ${y.toLocaleString()}円`,
+    signNear: '近場', signFar: '遠方', yen: y => `${y.toLocaleString()}円`,
+    zone: { canal: '運河の向こう', tower: '高層の上の階', edge: '街の外れ', far: '遠くのビル' },
+    custNote: { duf: '※デュフ', polite: '※遅れても怒らない', coins: '※小銭で払う', photo: '※写真を撮る。崩すな', net: '※網で受け取る' },
     floor: (p, f) => `${p}（${f}階の窓）`, dist: d => `あと${d}m`, sec: s => `${s}秒`, late: s => `${s}秒遅れ`,
     pause: '休憩', paused: '休憩中', resume: '戻る', quit: '店を出る（やめる）',
     jump: '跳ぶ', throw: '投げる', tooFar: '届かない', bumpPed: '<small>通行人</small>ちょっと！ 前見て！', bumpCar: '<small>運転手</small>危ないやろ！ 歩道歩け！',
     spill: { 25: 'スープが揺れてる', 50: '半分こぼれた', 75: 'ほとんど残ってない' },
     pickup: (d, p, f) => `はい次、${d}。${p}の${f}階や`,
+    pickupFar: (z) => `${z}や。気張って行け`,
+    custPick: { duf: 'デュフ…デュフフ…デュフ', polite: 'お忙しいところ誠に恐れ入ります。どうか、お気をつけて', coins: '小銭しかないけど、ええかな？', photo: '映えるように持ってきてな。崩したらあかんで', net: '網で取るから、窓の近くまででええよ' },
+    dufMaster: '…いつもの人や',
+    custNear: { duf: 'デュフフフッ', polite: 'ようこそ、ようこそお越しくださいました', coins: '（ジャラジャラ…数えてる）', photo: '（カシャカシャカシャ）', net: '網、こっちやで！ ほら！' },
+    custReact: {
+      duf: { good: 'デュフフフフフッ！！', ok: 'デュフ', mess: 'デュ…フ…', late: '……デュフ' },
+      polite: { good: '誠に、誠にありがとうございます', ok: '大変結構でございます', mess: '…大変、個性的な盛り付けで', late: 'いえいえ、待つのも修行でございます' },
+      coins: { good: '1円玉で払うわ。数えてな', ok: 'はい、1円玉で', mess: '1円玉1枚で十分やろ', late: '遅れた分、1円玉抜いとくで' },
+      photo: { good: '映えるー！ 100枚撮るわ', ok: '加工したらいける', mess: 'これは撮られへん…', late: '湯気が映らへんやん' },
+      net: { good: '網でキャッチ！ 大漁や', ok: '網に麺が絡まった', mess: '網からスープが全部漏れた', late: '網持ったまま腕つったわ' }
+    },
+    coinTip: n => `1円玉 ${n.toLocaleString()}枚`,
     custLine: { '事務所': '昼休み終わる前に頼むで', '美容室': 'パーマ中で動かれへん。窓まで頼むわ', '法律事務所': '一滴でもこぼれてたら訴えるからな', '歯医者': '麻酔切れる前に食べたいねん', 'ネイルサロン': '爪乾かしてるから、そっと渡してな', '設計事務所': '徹夜明けや。熱いうちに頼む', '塾': '休み時間10分しかないねん', '探偵事務所': '張り込み中や。目立たんように来てくれ', '会議室': '会議の前に来てや。遅れたら気まずい', 'ヨガ教室': 'ゆっくりでええ。でも麺はのばさんといて', 'お宅': '子どもが寝とるから、玄関やなくて2階の窓に頼むわ' },
     tooFast: '速すぎて受け取れん！', lateMsg: '遅れてるで！',
     react: { good: '早っ！ 熱いうちにいただきます', ok: 'ちょっと減ってるけど、まあええわ', throwOk: '窓から入ってきた！？', mess: 'スープどこいったん？ もう頼まん', late: 'のびのびやん…', drop: '下に落ちたで！' },
-    tip: y => `チップ ${y}円`, noTip: 'チップなし', allDone: '全部届けた！', timeUp: 'シフト終わり',
+    tip: y => `チップ ${y.toLocaleString()}円`, noTip: 'チップなし', allDone: '全部届けた！', timeUp: 'シフト終わり', timeUpHand: '時間切れ。持ったままや',
     job: '空中出前', boss: '店主', again: 'もう一回', save: '画像を保存', post: 'Xでポスト', toTitle: 'タイトル',
-    comments: { great: 'ようやった。明日も来てくれ', mess: '速いのはええけど、丼の中身が旅に出とる', late: '丁寧なんはええけど、麺がのびきっとるで', drop: '人の頭の上に料理を降らすな', few: '空ばっかり見とらんと、出前もしてくれ', ok: 'まあまあや。次は崩さず早く' },
+    comments: { great: 'ようやった。明日も来てくれ', mess: '速いのはええけど、丼の中身が旅に出とる', late: '丁寧なんはええけど、麺がのびきっとるで', drop: '人の頭の上に料理を降らすな', few: '空ばっかり見とらんと、出前もしてくれ', ok: 'まあまあや。次は崩さず早く', far: '運河の向こうまでようやった。足が速いな', duf: 'デュフフの人からチップもろたんか。あの人、ええ人やで', hand: '持ったまま帰ってくるな。時計も見てくれ' },
     stamps: ['不採用', '要研修', '採用', '即採用'],
-    postText: (y, n) => `空中出前のバイトで${n}件届けて手取り${y.toLocaleString()}円でした`
+    postText: (y, n) => `空中出前のバイトで4分間に${n}件届けて${y.toLocaleString()}円稼いだ`
   },
   en: {
-    series: 'ONE-DAY JOB #4', logo: 'Sky Delivery', masterName: 'Chef', masterLine: 'Take the orders by air. They complain if it spills, and they complain if it is late.',
+    series: 'ONE-DAY JOB #4', logo: 'Sky Delivery', masterName: 'Chef', masterLine: 'Four minutes. Earn what you can. Far pays more.',
     start: 'Clock in', how: 'How to work', lang: 'JP', more: 'More games', muteOn: 'Sound on', muteOff: 'Muted', loading: 'Prepping',
     howTitle: 'Delivery rules', ok: 'Got it',
     howItems: [
       '<b>Tap</b> a building to shoot a wire. The big button aims ahead for you',
+      'At the shop, the <b>front ring</b> is a near order, the <b>back ring</b> a far one. Far pays more',
       'The faster you go, <b>the more soup you lose</b>. Late is bad too',
-      'Ease up to the window with the red lantern to <b>hand it over</b>'
+      'Orders never stop for 4 minutes. <b>Earn as much as you can</b>'
     ],
     hintWire: '<small>Tip</small>Tap a building to shoot a wire', hintWirePc: '<small>Tip</small>Click a building (or E) to wire',
     keysPc: 'PC: WASD / arrows move · click to wire (E auto-aims) · Space jump · drag to look',
     keysTouch: 'Left stick moves, tap to wire, drag to look around. Run into a wall to climb it',
     credit: 'Sounds: Kenney, rubberduck, artisticdude, poinl, Almitory and others (CC0). See CREDITS.md',
-    ticketHead: 'ORDER', shiftLeft: 'Shift', toShop: 'Back to the shop', shopName: 'Chuzuri-ken',
+    ticketHead: 'ORDER', shiftLeft: 'Left', toShop: 'Back to the shop', shopName: 'Chuzuri-ken', nth: n => `#${n}`, earn: y => `Earned ¥${y.toLocaleString()}`,
+    pickHead: 'Pick an order', offerNear: (d, m, y) => `Near ${m}m ¥${y.toLocaleString()}`, offerFar: (d, m, y) => `Far ${m}m ¥${y.toLocaleString()}`,
+    signNear: 'NEAR', signFar: 'FAR', yen: y => `¥${y.toLocaleString()}`,
+    zone: { canal: 'across the canal', tower: 'high floor', edge: 'edge of town', far: 'far building' },
+    custNote: { duf: '* doo-fu', polite: '* never minds lateness', coins: '* pays in 1-yen coins', photo: '* takes photos. Do not spill', net: '* catches it with a net' },
     floor: (p, f) => `${p} (floor ${f} window)`, dist: d => `${d} m`, sec: s => `${s}s`, late: s => `${s}s late`,
     pause: 'Break', paused: 'On break', resume: 'Back to work', quit: 'Leave (quit)',
     jump: 'Jump', throw: 'Throw', tooFar: 'Too far', bumpPed: '<small>Passer-by</small>Hey! Watch it!', bumpCar: '<small>Driver</small>Get off the road!',
     spill: { 25: 'Soup is sloshing', 50: 'Half of it is gone', 75: 'Almost nothing left' },
     pickup: (d, p) => `Next: ${d} for the ${p}`,
+    pickupFar: (z) => `That one is ${z}. Go!`,
+    custPick: { duf: 'Doo-fu... doo-fufu... doo-fu', polite: 'I am terribly sorry to trouble you. Please, please be careful', coins: 'I only have coins. Is that okay?', photo: 'Make it look good. Do not spill a drop', net: 'I will catch it with a net. Just come near the window' },
+    dufMaster: '...that guy again',
+    custNear: { duf: 'Doo-fufufu', polite: 'Welcome, welcome, thank you for coming', coins: '(counting coins...)', photo: '(click click click)', net: 'Over here! The net!' },
+    custReact: {
+      duf: { good: 'Doo-fufufufu!!', ok: 'Doo-fu', mess: 'Doo...fu...', late: '...doo-fu' },
+      polite: { good: 'Thank you, thank you most sincerely', ok: 'Most splendid, thank you', mess: 'What a... unique presentation', late: 'Not at all. Waiting builds character' },
+      coins: { good: 'Here, in 1-yen coins. Count them', ok: 'Here you go, all 1-yen coins', mess: 'One coin is enough for that', late: 'I took out a few coins for the wait' },
+      photo: { good: 'So pretty! 100 photos!', ok: 'A filter will fix it', mess: 'I cannot post this...', late: 'The steam is gone from the shot' },
+      net: { good: 'Caught it! What a haul!', ok: 'Noodles stuck in the net', mess: 'The soup leaked through the net', late: 'My arms cramped holding the net' }
+    },
+    coinTip: n => `${n.toLocaleString()} one-yen coins`,
     custLine: { '事務所': 'Before my lunch break ends, please', '美容室': 'I am mid-perm. Bring it to the window', '法律事務所': 'One drop spilled and I will sue', '歯医者': 'I want to eat before the anesthetic wears off', 'ネイルサロン': 'My nails are drying. Hand it over gently', '設計事務所': 'Up all night. Bring it hot', '塾': 'I only have a 10-minute break', '探偵事務所': 'I am on a stakeout. Do not make a scene', '会議室': 'Before the meeting starts, please', 'ヨガ教室': 'Take it easy. Just do not let the noodles go soggy', 'お宅': 'The baby is asleep. Bring it to the upstairs window, not the door' },
     tooFast: 'Too fast to grab it!', lateMsg: 'You are late!',
     react: { good: 'Already? Still hot, thanks!', ok: 'A bit spilled, but fine', throwOk: 'It flew in the window!?', mess: 'Where did the soup go?', late: 'The noodles are soggy…', drop: 'It fell on the street!' },
-    tip: y => `Tip ¥${y}`, noTip: 'No tip', allDone: 'All delivered!', timeUp: 'Shift over',
+    tip: y => `Tip ¥${y.toLocaleString()}`, noTip: 'No tip', allDone: 'All delivered!', timeUp: 'Shift over', timeUpHand: 'Time up. Still holding one',
     job: 'Sky delivery', boss: 'Chef', again: 'Again', save: 'Save image', post: 'Post on X', toTitle: 'Title',
-    comments: { great: 'Good work. Come back tomorrow', mess: 'Fast, sure. The soup went on its own trip', late: 'Careful is nice. The noodles are mush', drop: 'Stop raining food on people', few: 'Stop sightseeing and deliver', ok: 'Not bad. Faster and cleaner next time' },
+    comments: { great: 'Good work. Come back tomorrow', mess: 'Fast, sure. The soup went on its own trip', late: 'Careful is nice. The noodles are mush', drop: 'Stop raining food on people', few: 'Stop sightseeing and deliver', ok: 'Not bad. Faster and cleaner next time', far: 'All the way across the canal. Fast legs', duf: 'The doo-fu guy tipped you? He is a good man', hand: 'Do not come back still holding it. Watch the clock' },
     stamps: ['REJECT', 'TRAINING', 'HIRED', 'HIRED!'],
-    postText: (y, n) => `I delivered ${n} orders by wire and took home ¥${y.toLocaleString()}`
+    postText: (y, n) => `I delivered ${n} orders by wire in 4 minutes and earned ¥${y.toLocaleString()}`
   }
 }
 const PLACE_EN = {}
+const RANK = [10000, 7500, 5000]   // 即採用・採用・要研修の境目（手取り）。tools/sim.mjs の bot で決めた
 let lang = store.get('sky.lang') || ((navigator.language || 'ja').startsWith('ja') ? 'ja' : 'en')
 const t = k => T[lang][k]
 function applyLang() {
@@ -100,7 +135,8 @@ Snd.def({
   wire: ['snd/swish-1.mp3', 'snd/swish-2.mp3', 'snd/swish-3.mp3'], hook: ['snd/metalClick.mp3', 'snd/metal_02.mp3'],
   throw: 'snd/swish-5.mp3', land: ['snd/footstep_01.mp3', 'snd/footstep_02.mp3'], bonk: ['snd/thwack-01.mp3', 'snd/thwack-03.mp3'],
   slosh: ['snd/splash_01.mp3', 'snd/splash_02.mp3'], dish: ['snd/dishes_01.mp3', 'snd/dishes_02.mp3', 'snd/dishes_03.mp3'],
-  ding: 'snd/bell_ding1.mp3', coin: 'snd/coin_drop.mp3', grunt: ['snd/grunt_01.mp3', 'snd/grunt_02.mp3', 'snd/grunt_03.mp3', 'snd/grunt_04.mp3'],
+  ding: 'snd/bell_ding1.mp3', coin: 'snd/coin_drop.mp3', squeak: ['snd/squeak_1.mp3', 'snd/squeak_2.mp3', 'snd/squeak_3.mp3'],
+  coins: ['snd/coins_1.mp3', 'snd/coins_2.mp3', 'snd/coins_3.mp3'], cloth: ['snd/cloth_1.mp3', 'snd/cloth_2.mp3'], grunt: ['snd/grunt_01.mp3', 'snd/grunt_02.mp3', 'snd/grunt_03.mp3', 'snd/grunt_04.mp3'],
   crash: 'snd/glass_breaking_01.mp3', shop: 'snd/bell_01.mp3', click: 'snd/click_001.mp3', tick: 'snd/tick_002.mp3',
   win: 'snd/jingles_SAX01.mp3', meh: 'snd/jingles_SAX03.mp3', lose: 'snd/jingles_PIZZA07.mp3'
 })
@@ -131,6 +167,7 @@ scene.add(hemi)
 loadSky(renderer, scene, sun, () => { hemiBase = 0.4; hemi.intensity = 0.4; dayK = -1 })
 const camera = new THREE.PerspectiveCamera(64, 1, 0.3, 2400)
 const world = createWorld('city')
+clearShopFront(world, JOB.shop)   // 見た目を作る前に（店の前の木を抜く）
 const built = buildScene(scene, world)
 for (const g of built.gates) g.grp.visible = false
 const fx = new FX(scene, world)
@@ -155,14 +192,45 @@ const shopGroup = new THREE.Group()
   lantern.position.set(-3.7, 2.6, 2.1)
   const lamp = new THREE.PointLight(0xffb070, 6, 10); lamp.position.set(-4.2, 2.6, 0)
   shopGroup.add(body, roof, sign, noren, lantern, lamp)
-  // 受け取りの場所（地面の丸）
-  const ring = new THREE.Mesh(new THREE.RingGeometry(S.r - 0.5, S.r, 48), new THREE.MeshBasicMaterial({ color: 0xffe2a0, transparent: true, opacity: 0.55, depthWrite: false }))
-  ring.rotation.x = -Math.PI / 2; ring.position.set(-6, 0.05, 0)
-  shopGroup.add(ring)
-  shopGroup.userData.ring = ring
   shopGroup.position.set(S.x + 6, 0, S.z)
 }
 scene.add(shopGroup)
+// 受け取りの輪が2つ: 手前＝近場（生成り）、奥＝遠方（赤）。横に立て看板（品と見込みの額）
+const pickRings = {}
+for (const tier of ['near', 'far']) {
+  const P = JOB.pick[tier], col = tier === 'far' ? 0xe0452a : 0xffe2a0
+  const g = new THREE.Group(); g.position.set(P.x, 0, P.z)
+  const ring = new THREE.Mesh(new THREE.RingGeometry(P.r - 0.5, P.r, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.6, depthWrite: false }))
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06
+  const fill = new THREE.Mesh(new THREE.CircleGeometry(P.r - 0.5, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, depthWrite: false }))
+  fill.rotation.x = -Math.PI / 2; fill.position.y = 0.05
+  // 立て看板（道の側＝西を向く）
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 320
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.875), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide }))
+  board.position.set(P.r - 0.6, 2.3, (tier === 'far' ? -1 : 1) * 1.6); board.rotation.y = -Math.PI / 2   // 輪の奥（店側）に立てて、通りから2枚並んで見えるように
+  const legM = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.9 })
+  for (const dz of [-0.6, 0.6]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.2, 0.08), legM); leg.position.set(board.position.x + 0.05, 1.1, board.position.z + dz); g.add(leg) }
+  g.add(ring, fill, board)
+  scene.add(g)
+  pickRings[tier] = { g, ring, fill, cv, tex, key: '' }
+}
+function drawSign(tier, o) {
+  const R0 = pickRings[tier], key = o ? lang + o.dish.id + offerYen(o) + o.zone + o.cust : lang
+  if (R0.key === key) return
+  R0.key = key
+  const x = R0.cv.getContext('2d'), W = 256, H = 320, far = tier === 'far'
+  x.fillStyle = far ? '#7d1d14' : '#f3ead2'; x.fillRect(0, 0, W, H)
+  x.strokeStyle = far ? '#f3ead2' : '#2b1d10'; x.lineWidth = 8; x.strokeRect(10, 10, W - 20, H - 20)
+  x.fillStyle = far ? '#f3ead2' : '#2b1d10'; x.textAlign = 'center'; x.textBaseline = 'middle'
+  x.font = '86px "Yuji Syuku", serif'; x.fillText(t(far ? 'signFar' : 'signNear'), W / 2, 84)
+  if (o) {
+    x.font = '600 52px "Klee One", serif'; x.fillText(t('yen')(offerYen(o)), W / 2, 176)
+    x.font = '600 30px "Klee One", serif'; x.fillText(far ? t('zone')[o.zone] : dishName(o), W / 2, 238)
+    x.fillText(Math.round(o.dist) + 'm', W / 2, 278)
+  }
+  R0.tex.needsUpdate = true
+}
 // 店と一軒家の当たり判定・掛け点、通り沿いの電柱と街灯（2026-11-02 本人「通り抜けできてまう」「一軒家も」「電柱とか掛けられる場所を」）
 const town = addTown(world, JOB.shop)
 const poles3d = buildPoles3d(scene, buildPoles(world, JOB.shop))
@@ -209,7 +277,7 @@ const target = new THREE.Group()
   // 客: 窓辺に立つ3Dの人（腰から下は窓の下の壁で隠す）。読み込み前は影絵の板
   const cust = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.4), new THREE.MeshBasicMaterial({ map: custTex, transparent: true }))
   cust.position.set(0, -0.25, 0.02)
-  const person = new Customer(); person.group.position.set(0, -0.45, 0.25); person.group.visible = false
+  const person = new Customer(); person.group.position.set(0, -0.78, 0.2); person.group.visible = false
   const sill = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.95, 0.12), new THREE.MeshStandardMaterial({ color: 0x8c8378, roughness: 0.85 }))
   sill.position.set(0, -0.68, 0.5)
   const ledge = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.08, 0.35), new THREE.MeshStandardMaterial({ color: 0xb8b1a6, roughness: 0.7 }))
@@ -238,13 +306,13 @@ aimMark.renderOrder = 5; aimMark.visible = false; scene.add(aimMark)
 let mode = 'title'        // title | play | result
 let me = null, sh = null, model = null
 let demo = null           // タイトルの後ろで飛ぶ CPU
-let paused = false, dbgPause = false, endAt = 0, photo = null, photoScore = -1
+let paused = false, dbgPause = false, endAt = 0, photo = null, photoScore = -1, afterDel = null
 const touchMode = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
 document.body.classList.toggle('is-touch', touchMode)
 const cam = { hd: -Math.PI / 2, pitch: 0.15, userT: -1e9, pos: new THREE.Vector3(), off: new THREE.Vector3(-6, 3, 0), look: new THREE.Vector3(), lookOff: new THREE.Vector3(), fov: 64 }
 const _v = new THREE.Vector3(), _w = new THREE.Vector3()
 
-function spawnRunner(id) { return createRunner({ id, spawn: { x: S.x - 4, y: 0, z: S.z, yaw: -Math.PI / 2 } }) }
+function spawnRunner(id) { return createRunner({ id, spawn: { x: S.x - 9, y: 0, z: S.z, yaw: Math.PI / 2 } }) }   // 店と2つの輪と立て看板が見える所から始める
 function newModel() { if (model) { scene.remove(model.group); model.dispose() } model = charAssets.ready ? new CharRunnerModel() : new RunnerModel(); scene.add(model.group); return model }
 // 人物の素材は裏で読む。読み終わったら今の人形と差し替える
 loadCharAssets().then(() => { if (charAssets.ready && model && !(model instanceof CharRunnerModel)) newModel() })
@@ -318,28 +386,32 @@ const stick = { x: 0, y: 0, id: null }
     else press[k] = true
   })
 }
+function screenBasis() { const e = camera.matrixWorld.elements; let rx = e[0], rz = e[2], fx = -e[8], fz = -e[10]; const a = Math.hypot(rx, rz) || 1, b = Math.hypot(fx, fz) || 1; return { r: { x: rx / a, z: rz / a }, f: { x: fx / b, z: fz / b } } }
 function gather() {
   let thr = 0, brk = 0, steer = 0, wallY = null, wallX = null
   if (keys.has('KeyW') || keys.has('ArrowUp')) thr = 1
   if (keys.has('KeyS') || keys.has('ArrowDown')) brk = 1
   if (keys.has('KeyA') || keys.has('ArrowLeft')) steer -= 1
   if (keys.has('KeyD') || keys.has('ArrowRight')) steer += 1
+  // 画面の右と前（カメラの実際の向きから取る。cam.hd の式に頼らない）
+  const SR = screenBasis().r, SF = screenBasis().f
+  let moveDir = null
   if (stick.id != null) {
     // スティックはカメラの向きに対して倒した方へ走る
     // WIRE ESCAPE と同じ効き方: 倒した向き（カメラから見て）へ走る。少し倒すだけで全力
     const mag = Math.min(1, Math.hypot(stick.x, stick.y))
     if (mag > 0.15) {
-      const want = cam.hd + Math.atan2(-stick.x, -stick.y)
-      let d = want - me.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2
-      steer = Math.max(-1, Math.min(1, -d * 2.5)); thr = Math.max(thr, Math.min(1, mag * 1.3))
+      const dx = SR.x * stick.x - SF.x * stick.y, dz = SR.z * stick.x - SF.z * stick.y, l = Math.hypot(dx, dz) || 1
+      moveDir = { x: dx / l, z: dz / l }; steer = 0; thr = Math.max(thr, Math.min(1, mag * 1.3))
     }
     // 壁に張り付いている時: スティックの上下で登り降り、左右で壁沿いに横へ（画面で見た左右に合わせる）
     if (me.climbing) {
-      const cl = me.climbing, sideSign = (-Math.cos(cam.hd)) * cl.nz + Math.sin(cam.hd) * -cl.nx >= 0 ? 1 : -1
+      const cl = me.climbing, sideSign = SR.x * cl.nz - SR.z * cl.nx >= 0 ? 1 : -1   // 壁沿いの正の向き (nz,-nx) と画面の右をそろえる
       wallY = Math.abs(stick.y) > 0.25 ? -stick.y : 0; wallX = Math.abs(stick.x) > 0.25 ? stick.x * sideSign : 0
     }
   }
-  const inp = { throttle: thr, brake: brk, steer, jump: press.jump, wire: false, wallY, wallX }
+  const inp = { throttle: thr, brake: brk, steer, jump: press.jump, wire: false, wallY, wallX, moveDir }
+  inp.wireYaw = moveDir ? Math.atan2(moveDir.x, moveDir.z) : touchMode ? Math.atan2(SF.x, SF.z) : undefined   // ワイヤーボタンの自動狙い: スティックの向き、スマホでは画面の前
   if (pendingWire) { inp.wire = true; if (pendingWire.at) inp.wireAt = pendingWire.at; me._tap = pendingWire; pendingWire = null }
   const th = press.throw
   press.jump = press.throw = false
@@ -357,10 +429,10 @@ function toTitle() {
 }
 function startShift(seed = Math.floor(Math.random() * 1e6)) {
   Snd.init(); sfx('click')
-  mode = 'play'; paused = false; demo = null; photo = null; photoScore = -1; endAt = 0
+  mode = 'play'; paused = false; demo = null; photo = null; photoScore = -1; endAt = 0; afterDel = null
   me = spawnRunner('me'); sh = createShift(world, seed); sh.seed = seed; street = createStreet(world, seed)
   newModel()
-  cam.hd = -Math.PI / 2; cam.pitch = 0.15; cam.userT = -1e9
+  cam.hd = Math.PI / 2; cam.pitch = 0.4; cam.userT = -1e9
   show(null); $('touch').classList.toggle('hidden', !touchMode)
   Snd.loop('bgm', 'snd/bgm_play.mp3', 0.16); Snd.loop('amb', 'snd/loop_highway.mp3', 0.16); Snd.loop('wind', 'snd/air_01.mp3', 0.0001)
   say(t('masterName') + '「' + t('masterLine') + '」', 2.6)
@@ -376,22 +448,28 @@ let bowlWordT = 0
 function bowlWord(s) { $('bowlWord').textContent = s; bowlWordT = 1.8 }
 function fmt(s) { s = Math.max(0, Math.ceil(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
 const placeName = o => lang === 'ja' ? o.place[0] : o.place[1]
+const offerYen = o => o.fee + o.bonus + o.tipMax   // 崩さず間に合った時の見込み
 const dishName = o => o.dish[lang]
 function updateHud(dt) {
   const o = curOrder(sh)
-  $('tNo').textContent = `${Math.min(sh.idx + 1, JOB.orders)} / ${JOB.orders}`
+  $('tNo').textContent = t('nth')(sh.idx + 1)
   $('tShift').textContent = fmt(JOB.shiftSec - sh.t)
-  const tTime = $('tTime')
-  if (!o) { $('tDish').textContent = ''; $('tTo').textContent = ''; $('tDist').textContent = ''; tTime.textContent = ''; return }
-  $('tDish').textContent = dishName(o)
+  const ey = earned(sh); if ($('tEarn')._y !== ey) { $('tEarn')._y = ey; $('tEarn').textContent = t('earn')(ey) }
+  const tTime = $('tTime'), tk = $('ticket')
+  tk.classList.toggle('at-shop', !o)
   if (sh.carrying || sh.thrown) {
-    $('tTo').textContent = t('floor')(placeName(o), o.floor)
+    $('tDish').textContent = dishName(o)
+    $('tTo').textContent = t('floor')(placeName(o), o.floor) + (o.zone ? ' ' + t('zone')[o.zone] : '')
+    $('tNote').textContent = o.cust !== 'normal' ? t('custNote')[o.cust] : ''
     $('tDist').textContent = t('dist')(Math.round(Math.hypot(o.x - me.x, o.z - me.z)))
     const left = sh.limit - sh.held
     tTime.textContent = left >= 0 ? t('sec')(Math.ceil(left)) : t('late')(Math.ceil(-left))
     tTime.classList.toggle('late', left < 0)
-  } else {
-    $('tTo').textContent = t('toShop')
+  } else if (sh.offers) {
+    const N = sh.offers.near, F = sh.offers.far
+    $('tDish').textContent = t('pickHead')
+    $('tTo').textContent = t('offerNear')(dishName(N), Math.round(N.dist), offerYen(N))
+    $('tNote').textContent = t('offerFar')(dishName(F), Math.round(F.dist), offerYen(F))
     $('tDist').textContent = t('dist')(Math.round(Math.hypot(S.x - me.x, S.z - me.z)))
     tTime.textContent = ''
   }
@@ -405,7 +483,7 @@ function updateHud(dt) {
   if (bowlWordT > 0) { bowlWordT -= dt; if (bowlWordT <= 0) $('bowlWord').textContent = '' }
   if (sayT > 0) { sayT -= dt; $('say').classList.toggle('hidden', sayT <= 0) }
   // 画面の外の届け先へ矢印
-  const goal = sh.carrying || sh.thrown ? _w.set(o.x, o.y + 1.8, o.z) : _w.set(S.x, 2, S.z)   // 窓の上に出す（客の顔に重ねない）
+  const goal = sh.carrying || sh.thrown ? _w.set(o.x, o.y + 1.8, o.z) : _w.set(S.x, 5.5, S.z)   // 窓の上に出す（客の顔に重ねない）
   const p = _v.copy(goal).project(camera)
   const W = innerWidth, H = innerHeight
   const behind = p.z > 1
@@ -446,8 +524,16 @@ function onRunnerEvent(e) {
 }
 function onShiftEvent(e) {
   log.push({ src: 's', ...e, at: +sh.t.toFixed(2) })
-  const o = curOrder(sh)
-  if (e.t === 'pickup') { sfx('shop', { vol: 0.8 }); const cl = t('custLine')[o.place[0]]; say(cl ? `<small>${placeName(o)}${lang === 'ja' ? 'のお客' : ''}</small>${cl}` : `<small>${t('masterName')}</small>${t('pickup')(dishName(o), placeName(o), o.floor)}`, 2.6) }
+  const o = curOrder(sh) || sh.last   // 近づいた瞬間に渡し終えると、同じ歩で cur が空になる
+  const who = o => `<small>${placeName(o)}${lang === 'ja' ? 'のお客' : ''}</small>`
+  if (e.t === 'pickup') {
+    sfx('shop', { vol: 0.8 })
+    if (o.cust === 'duf') { say(`<small>${t('masterName')}「${t('dufMaster')}」</small>${t('custPick').duf}`, 2.8); custSfx('duf') }
+    else if (o.cust !== 'normal') say(who(o) + t('custPick')[o.cust], 2.8)
+    else if (o.tier === 'far') say(`<small>${t('masterName')}</small>${t('pickupFar')(t('zone')[o.zone])}`, 2.4)
+    else { const cl = t('custLine')[o.place[0]]; say(cl ? who(o) + cl : `<small>${t('masterName')}</small>${t('pickup')(dishName(o), placeName(o), o.floor)}`, 2.6) }
+  }
+  else if (e.t === 'approach') { if (e.cust !== 'normal') { say(who(o) + t('custNear')[e.cust], 1.8); custSfx(e.cust) } }
   else if (e.t === 'spill') {
     sfx('slosh', { vol: 0.5 + e.level / 200 }); if (e.level >= 50) sfx('dish', { vol: 0.6 })
     bowlWord(t('spill')[e.level]); const b = $('bowl'); b.classList.remove('tilt'); void b.offsetWidth; b.classList.add('tilt')
@@ -457,39 +543,65 @@ function onShiftEvent(e) {
   else if (e.t === 'throw') sfx('throw')
   else if (e.t === 'drop') { sfx('crash', { vol: 0.9 }); sfx('dish'); fx.debrisAt(e.x, 0.5, e.z, 14, 0xc9ced3, { speed: 6, up: 5, size: 0.15 }) }
   else if (e.t === 'deliver') {
-    const R = T[lang].react
-    const line = e.how === 'drop' ? R.drop : e.reason === 'mess' ? R.mess : e.reason === 'late' ? R.late : e.how === 'throw' ? R.throwOk : e.mess < 25 && e.late === 0 ? R.good : R.ok
-    if (e.angry) { sfx('grunt', { vol: 0.9 }); } else { sfx('ding', { vol: 0.8 }); if (e.tip) sfx('coin', { vol: 0.7, delay: 0.25 }) }
-    say(`${line}<small>${e.tip ? t('tip')(e.tip) : t('noTip')}</small>`, 2.4)
+    const od = sh.last, c = e.cust || 'normal'
+    let kind = reactKind(e)
+    const R = c === 'normal' ? T[lang].react : t('custReact')[c]
+    const line = e.how === 'drop' ? R.drop : e.how === 'throw' && !e.angry ? (R.throwOk || R.ok) : R[kind]
+    if (e.angry) { sfx('grunt', { vol: 0.9 }); } else { sfx('ding', { vol: 0.8 }); if (e.tip && c !== 'coins') sfx('coin', { vol: 0.7, delay: 0.25 }) }
+    custSfx(c, true, e)
+    const tipTxt = c === 'coins' && e.tip ? t('coinTip')(e.tip - (e.early || 0)) + (e.early ? ' +' + t('yen')(e.early) : '') : e.tip ? t('tip')(e.tip) : t('noTip')
+    say(`${line}<small>${tipTxt}</small>`, 2.6)
+    if (od) { afterDel = { o: od, t: 2.6 }; target.userData.person.show(od); target.userData.person.setReact(kind, e.angry) }
+    if (c === 'coins' && od && e.tip) fx.debrisAt(od.x + od.nx * 0.6, od.y + 0.3, od.z + od.nz * 0.6, Math.min(30, 6 + Math.round(e.tip / 40)), 0xd8b04a, { speed: 2, up: 2, size: 0.06 })   // 1円玉がこぼれる
     // 一番いい受け渡しの瞬間を明細の写真にする
     const score = (e.angry ? 0 : 100) + (e.how === 'throw' ? 30 : 0) - e.mess
     if (score > photoScore) { photoScore = score; snapNext = true }
-  } else if (e.t === 'allDone' || e.t === 'timeUp') { say(e.t === 'allDone' ? t('allDone') : t('timeUp'), 2); endAt = 1.6 }
+  } else if (e.t === 'allDone' || e.t === 'timeUp') { say(e.t === 'timeUp' && e.carrying ? t('timeUpHand') : e.t === 'allDone' ? t('allDone') : t('timeUp'), 2); endAt = 1.6 }
+}
+// 受け取った時の反応の種類: good / ok / mess / late（1件目は練習なので怒る台詞は出さない）
+function reactKind(e) {
+  const angryMess = e.cust === 'photo' ? 55 : JOB.angryMess
+  let k = e.mess >= angryMess ? 'mess' : e.late >= JOB.angryLate ? 'late' : e.mess < 25 && e.late === 0 ? 'good' : 'ok'
+  if (e.practice && (k === 'mess' || k === 'late')) k = 'ok'
+  return k
+}
+// 客ごとの音（録音素材だけ）
+function custSfx(c, done = false, e = null) {
+  if (c === 'duf') { sfx('squeak', { vol: 0.7 }); sfx('squeak', { vol: 0.6, delay: 0.22 }); if (done && e && e.style === 'jackpot') sfx('squeak', { vol: 0.8, delay: 0.45 }) }
+  else if (c === 'polite') { sfx('cloth', { vol: 0.8 }); sfx('cloth', { vol: 0.7, delay: 0.5 }) }
+  else if (c === 'coins') { sfx('coins', { vol: 0.8 }); if (done) { sfx('coins', { vol: 0.8, delay: 0.3 }); sfx('coins', { vol: 0.7, delay: 0.6 }) } }
+  else if (c === 'photo') { for (let i = 0; i < 3; i++) sfx('hook', { vol: 0.6, delay: i * 0.16 }) }
+  else if (c === 'net') sfx('wire', { vol: 0.6, rate: 0.8 })
 }
 let snapNext = false
 const log = []
 
 // ---------------------------------------------------------------- 結果
+// 明細の日付は端末の日付（UTC だと朝9時前は前の日になる）
 function showResult() {
   mode = 'result'
   Snd.loop('wind', null); Snd.loop('bgm', null)
-  const p = payData(sh, lang), d = { lang, no: 4, job: t('job'), date: new Date().toISOString().slice(0, 10).replace(/-/g, '.'), wage: JOB.wage, hours: JOB.hours, pay: p.pay, ded: p.ded, boss: t('boss') }
+  const p = payData(sh, lang), d = { lang, no: 4, job: t('job'), date: (d0 => `${d0.getFullYear()}.${String(d0.getMonth() + 1).padStart(2, '0')}.${String(d0.getDate()).padStart(2, '0')}`)(new Date()), wage: JOB.wage, hours: JOB.hours, pay: p.pay, ded: p.ded, boss: t('boss') }
   const net = totals(d).net
   const C = t('comments'), R = sh.results
   const messy = R.filter(r => r.reason === 'mess').length, late = R.filter(r => r.reason === 'late').length
-  d.comment = p.drops ? C.drop : p.ok <= 1 ? C.few : messy > late && messy ? C.mess : late ? C.late : p.ok >= 4 && !p.claims ? C.great : C.ok
-  const st = t('stamps'); d.stamp = net >= 7000 ? st[3] : net >= 5000 ? st[2] : net >= 3500 ? st[1] : st[0]
+  const jackpot = R.some(r => r.style === 'jackpot')
+  d.comment = p.drops ? C.drop : p.ok <= 1 ? C.few : p.undone && p.ok < 4 ? C.hand : jackpot ? C.duf : messy > late && messy ? C.mess : late ? C.late : net >= RANK[0] && !p.claims ? C.great : p.far >= 2 ? C.far : p.undone ? C.hand : C.ok
+  const st = t('stamps'); d.stamp = net >= RANK[0] ? st[3] : net >= RANK[1] ? st[2] : net >= RANK[2] ? st[1] : st[0]
   d.stampK = 1; d.photo = photo; d.footer = 'tom3games.github.io/sky-delivery'
   // 出前の記録: 1件ずつ、何をどう届けて客がどうだったか
   const ja = lang === 'ja', RL = T[lang].react
   d.logTitle = ja ? '今日の出前' : "Today's orders"
-  d.log = sh.targets.slice(0, JOB.orders).map((o, i) => {
+  const rows = sh.targets.map((o, i) => {
     const r = R[i]
-    if (!r) return { no: i + 1, text: ja ? `${placeName(o)}へ ${dishName(o)}` : `${dishName(o)} to ${placeName(o)}`, note: ja ? '届かず' : 'never arrived', bad: true }
+    const text = (o.tier === 'far' ? (ja ? '遠 ' : 'FAR ') : '') + (ja ? `${placeName(o)}へ ${dishName(o)}` : `${dishName(o)} to ${placeName(o)}`)
+    if (!r) return { no: i + 1, text, note: ja ? '持ったまま時間切れ' : 'time ran out', bad: true }
     const how = r.how === 'drop' ? (ja ? '落とした' : 'dropped') : r.how === 'throw' ? (ja ? '投げ入れ' : 'thrown in') : (ja ? '手渡し' : 'handed')
-    const note = r.how === 'drop' ? how : r.reason === 'mess' ? (ja ? `${how}・こぼれすぎ` : `${how}, spilled`) : r.reason === 'late' ? (ja ? `${how}・${r.late}秒遅れ` : `${how}, ${r.late}s late`) : r.tip ? (ja ? `${how}・チップ${r.tip}円` : `${how}, tip ¥${r.tip}`) : how
-    return { no: i + 1, text: ja ? `${placeName(o)}へ ${dishName(o)}` : `${dishName(o)} to ${placeName(o)}`, note, bad: r.angry }
+    const tipN = r.cust === 'duf' ? (ja ? `デュフフ ${r.tip.toLocaleString()}円` : `doo-fu ¥${r.tip.toLocaleString()}`) : r.cust === 'coins' ? (ja ? `1円玉${r.tip - (r.early || 0)}枚` : `${r.tip - (r.early || 0)} coins`) : (ja ? `チップ${r.tip}円` : `tip ¥${r.tip}`)
+    const note = r.how === 'drop' ? how : r.reason === 'mess' ? (ja ? `${how}・こぼれすぎ` : `${how}, spilled`) : r.reason === 'late' ? (ja ? `${how}・${r.late}秒遅れ` : `${how}, ${r.late}s late`) : r.tip ? tipN : how
+    return { no: i + 1, text, note, bad: r.angry }
   })
+  d.log = rows; d.logMore = n => ja ? `ほか ${n}件` : `${n} more`   // 入りきらない分は payslip.js が上にまとめる
   drawPayslip($('slip'), d, { main: '#1f2a44', dark: '#121a2e', accent: '#c8341f', bg: '#2a2016' })
   sfx(net >= 5000 ? 'win' : net >= 3500 ? 'meh' : 'lose', { vol: 0.8 })
   $('btnPost').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(t('postText')(net, p.ok)) + '&url=' + encodeURIComponent(URL_)
@@ -600,19 +712,29 @@ function render(dt) {
     const d = sun.userData.dir; sun.position.set(c.x + d.x * 150, c.y + d.y * 150, c.z + d.z * 150); sun.target.position.set(c.x, c.y, c.z)
   }
   // 届け先と投げた料理
-  const o = shift && curOrder(shift)
-  target.visible = !!(o && (shift.carrying || shift.thrown))
+  // 受け渡しの後も 2.6 秒は窓に残して、客の反応（お辞儀・小銭・フラッシュ・怒り）を見せる
+  if (afterDel && mode === 'play') { afterDel.t -= dt; if (afterDel.t <= 0 || (shift && shift.carrying)) afterDel = null }
+  const showAfter = mode === 'play' && afterDel && shift === sh
+  const o = shift && (curOrder(shift) || (showAfter ? afterDel.o : null))
+  target.visible = !!(o && (shift.carrying || shift.thrown || showAfter))
   if (target.visible) {
     target.position.set(o.x - o.nx * 0.65, o.y, o.z - o.nz * 0.65)
     target.rotation.y = Math.atan2(o.nx, o.nz)
     const k = performance.now() / 1000
     const ud = target.userData
-    if (ud.person.show(o.idx != null ? o.idx : shift.idx)) { ud.cust.visible = false; ud.person.group.visible = true; ud.person.update(dt) }
+    if (ud.person.show(o)) { ud.cust.visible = false; ud.person.group.visible = true; ud.person.update(dt, !!shift.near) }
     else { ud.cust.visible = true; ud.cust.rotation.z = Math.sin(k * 6) * 0.08 }
+    ud.lan.visible = !showAfter || shift.carrying
     target.userData.lan.position.y = 0.4 + Math.sin(k * 2) * 0.05
     const dT = camera.position.distanceTo(target.position); target.userData.lan.scale.setScalar(Math.max(1, dT / 30))
   }
-  shopGroup.userData.ring.material.opacity = shift && !shift.carrying && !shift.thrown ? 0.55 + Math.sin(performance.now() / 250) * 0.25 : 0.15
+  const atShop = !!(shift && !shift.carrying && !shift.thrown && shift.offers)
+  for (const tier of ['near', 'far']) {
+    const R0 = pickRings[tier]
+    R0.ring.material.opacity = atShop ? 0.55 + Math.sin(performance.now() / 250 + (tier === 'far' ? 1.5 : 0)) * 0.25 : 0.12
+    R0.fill.visible = atShop
+    if (shift && shift.offers) drawSign(tier, shift.offers[tier]); else drawSign(tier, null)
+  }
   const th = shift && shift.thrown
   flying.visible = !!th
   if (th) { flying.position.set(th.x, th.y, th.z); flying.rotation.x += dt * 8; flying.rotation.y += dt * 5 }
@@ -643,13 +765,24 @@ function render(dt) {
 
 // ---------------------------------------------------------------- 検証用の窓口
 window.sky = {
-  get mode() { return mode }, log, get me() { return me }, get sh() { return sh }, JOB, RUN, world, camera, touchMode,
+  get mode() { return mode }, log, get me() { return me }, get sh() { return sh }, JOB, RUN, world, camera, touchMode, cam,
   start: seed => startShift(seed), toTitle, showResult, setLang: l => { lang = l; applyLang() }, get lang() { return lang },
   dbg: {
     pause: on => { dbgPause = on }, step: n => { for (let i = 0; i < n; i++) stepOnce(); render(STEP) },
     teleport: (x, y, z, yaw) => { Object.assign(me, { x, y, z, vx: 0, vy: 0, vz: 0, rope: null, climbing: null, grounded: y < 0.1 }); if (yaw != null) me.yaw = yaw },
     pressWire: (sx, sy) => aimAt(sx, sy), pressJump: () => { press.jump = true }, pressThrow: () => { press.throw = true }, wireAuto: () => { pendingWire = { at: null, key: true } },
-    keys, stick, say, setMess: m => { sh.mess = m }, target, get model() { return model }
+    keys, stick, say, setMess: m => { sh.mess = m }, target, get model() { return model },
+    render: n => { for (let i = 0; i < n; i++) render(1 / 30) },
+    // 目の前の窓に客を出す（撮影と検証用）: 今の注文の客の種類を変えて、窓の前 dist m に浮かせる
+    lookAtWindow: (type, dist = 7, side = 0) => {
+      const o = sh.cur; if (!o) return null
+      if (type) { o.cust = type; o.handR = type === 'net' ? JOB.netR : JOB.handR; o.handSpeed = type === 'net' ? JOB.netSpeed : JOB.handSpeed }
+      const yaw = Math.atan2(-o.nx, -o.nz)
+      Object.assign(me, { x: o.x + o.nx * dist + o.nz * side, y: o.y - 1.6, z: o.z + o.nz * dist - o.nx * side, vx: 0, vy: 0, vz: 0, rope: null, climbing: null, grounded: false, yaw })
+      cam.hd = yaw; cam.pitch = 0.05; cam.userT = performance.now()
+      return { x: o.x, y: o.y, z: o.z, cust: o.cust }
+    },
+    react: (kind, angry) => target.userData.person.setReact(kind, angry)
   }
 }
 applyLang()

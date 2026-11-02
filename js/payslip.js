@@ -3,7 +3,7 @@
 // sky-delivery 版だけ「出前の記録」（d.log）を足してある（2026-11-02。正本には未反映）。型は2本で同じ、色だけ仕事ごとに変える。
 //
 // 使い方:
-//   import { drawPayslip, PAYSLIP_W, PAYSLIP_H } from './payslip.js'
+//   import { drawPayslip, PAYSLIP_W, PAYSLIP_H } from './payslip.js?v=6'
 //   const c = drawPayslip(canvasOrNull, {
 //     lang: 'ja', no: 1, job: '居酒屋ホール', date: '2026.11.01',
 //     wage: 1100, hours: 6,                       // 基本給 = 時給 × 時間
@@ -97,8 +97,12 @@ export function drawPayslip(canvas, d, th) {
   if (d.log && d.log.length && logEnd - logTop > 90) {
     let ly = logTop
     x.textAlign = 'left'; x.font = `900 26px ${FJ}`; x.fillStyle = 'rgba(29,26,22,.55)'; x.fillText(d.logTitle || '', colL, ly); ly += 40
-    const lh = Math.min(44, (logEnd - ly) / d.log.length)
-    for (const r of d.log) {
+    // 入りきらない日は最後の何件かだけ。上に「ほか N件」（d.logMore があれば）
+    const fitN = Math.max(1, Math.floor((logEnd - ly) / 34))
+    let rows = d.log
+    if (rows.length > fitN) rows = d.logMore ? [{ no: '…', text: d.logMore(rows.length - (fitN - 1)), note: '' }, ...rows.slice(-(fitN - 1))] : rows.slice(-fitN)
+    const lh = Math.min(44, (logEnd - ly) / rows.length)
+    for (const r of rows) {
       if (ly > logEnd - 10) break
       x.fillStyle = r.bad ? '#c62828' : th.main; x.font = `900 24px ${FJ}`; x.textAlign = 'left'; x.fillText(String(r.no), colL + 4, ly)
       x.fillStyle = ink; fitText(x, r.text, (P.x + P.w - 36 - colL) * 0.58, 26, FJ, '700'); x.fillText(r.text, colL + 40, ly)
