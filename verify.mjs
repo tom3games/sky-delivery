@@ -280,6 +280,37 @@ await t('先読み（modulepreload）は importmap より後にある（前だ�
   const im = h.indexOf('type="importmap"'), mp = h.indexOf('rel="modulepreload"')
   expect(im > 0 && (mp < 0 || mp > im), JSON.stringify({ im, mp })); return { im, mp }
 })
+await t('地面ワイヤー（2026-11-03 本人「空中に浮いてる間は地面にもワイヤーつけて加速」「地面をちゃんとタップしなあかん感じに」）: 地面に立っている時は地面に掛からない／空中では掛かって点へ加速し、近く（4m）で外れて上へ跳ねる／1ステップで最高速×dt より動かない（瞬間移動しない）／ワイヤーボタン（狙いなし）では空中でも地面に掛からない', () => {
+  const DT = 1 / 60
+  const findOpen = () => { for (let x = -200; x <= 200; x += 7) for (let z = 300; z <= 1200; z += 7) { if (world.surfaceAt(x, z) !== 'road') continue; const g = world.groundAt(x, z, 50).h; if (Math.abs(g) > 0.5) continue; let ok = true; for (let k = 0; k <= 40 && ok; k += 4) { const zz = z + k; if (world.surfaceAt(x, zz) !== 'road' || Math.abs(world.groundAt(x, zz, 50).h) > 0.5) ok = false } if (ok) return { x, z } } return null }
+  const P = findOpen(), out = {}
+  // 1) 地面に立っている
+  const a = createRunner({ id: 'g1', spawn: { x: P.x, y: 0, z: P.z, yaw: 0 } })
+  for (let i = 0; i < 20; i++) stepRunner(a, {}, DT, world)
+  a.events.length = 0; stepRunner(a, { wire: true, wireAt: { x: P.x, y: 0, z: P.z + 20, ground: true } }, DT, world)
+  out.groundBlocked = !(a.rope && a.rope.ground) && a.events.some(e => e.t === 'wireMiss' && e.ground)
+  // 2) 空中: 高さ 22m、前（+z）へ 10m/s。斜め前の地面に掛ける
+  const b = createRunner({ id: 'g2', spawn: { x: P.x, y: 22, z: P.z, yaw: 0 } })
+  Object.assign(b, { grounded: false, vx: 0, vy: 0, vz: 10 })
+  stepRunner(b, { wire: true, wireAt: { x: P.x, y: 0, z: P.z + 30, ground: true } }, DT, world)
+  out.hooked = !!(b.rope && b.rope.ground)
+  let maxV = 0, maxStep = 0, released = -1, relD = null, relVy = null, px = b.x, py = b.y, pz = b.z
+  for (let i = 1; i < 60 * 4 && released < 0; i++) {
+    stepRunner(b, {}, DT, world)
+    if (b.rope) maxStep = Math.max(maxStep, Math.hypot(b.x - px, b.y - py, b.z - pz)); px = b.x; py = b.y; pz = b.z
+    maxV = Math.max(maxV, Math.hypot(b.vx, b.vy, b.vz))
+    if (!b.rope) { released = i; relD = +Math.hypot(P.x - b.x, 0 - (b.y + 1.2), P.z + 30 - b.z).toFixed(1); relVy = +b.vy.toFixed(1) }
+  }
+  out.released = released > 0; out.relD = relD; out.relVy = relVy; out.maxV = +maxV.toFixed(1); out.maxStep = +maxStep.toFixed(2); out.stepLimit = +(RUN.maxSpeed * DT * 1.05).toFixed(2)
+  out.unwire = b.events.length >= 0
+  // 3) ワイヤーボタン（狙いなし）を空中で押しても地面には掛からない
+  const c = createRunner({ id: 'g3', spawn: { x: P.x, y: 22, z: P.z, yaw: 0 } })
+  Object.assign(c, { grounded: false, vx: 0, vy: 0, vz: 10 })
+  stepRunner(c, { wire: true }, DT, world)
+  out.buttonNotGround = !(c.rope && c.rope.ground)
+  expect(out.groundBlocked && out.hooked && out.released && relD <= RUN.groundWireRelease + 1.5 && relVy >= RUN.groundWireHop - 0.5 && maxV <= RUN.maxSpeed + 1 && maxStep <= out.stepLimit && out.buttonNotGround, JSON.stringify(out))
+  return out
+})
 await t('AI臭さチェック NG 0', () => {
   const out = execFileSync(process.execPath, [process.env.HOME + '/Desktop/claudecode/_shared/ai_tells.mjs', ROOT, '--json'], { encoding: 'utf8' })
   const j = JSON.parse(out); expect(j.ng === 0, JSON.stringify(j.items)); return j.items.map(i => i.key)
@@ -390,6 +421,28 @@ await t('光の柱: 届け先の窓の前（壁の外 1.6m）に、地面から�
     return { vis: b.visible, dx: +(b.position.x - (o.x + o.nx * 1.6)).toFixed(2), dz: +(b.position.z - (o.z + o.nz * 1.6)).toFixed(2), bottom: +b.position.y.toFixed(1), top: +(b.position.y + col.scale.y).toFixed(1), roof: o.bld && o.bld.y1, bandY: +(b.position.y + band.position.y).toFixed(1), winY: +o.y.toFixed(1) }
   })
   expect(r.vis && Math.abs(r.dx) < 0.01 && Math.abs(r.dz) < 0.01 && r.bottom < 2 && r.top > Math.max(r.winY, r.roof || 0) + 5 && Math.abs(r.bandY - r.winY) < 0.01, JSON.stringify(r)); return r
+})
+await t('地面ワイヤー（画面）: 空中で画面の道をタップすると地面に掛かる／建物をタップすると建物（地面より優先）／地面に立っている時に道をタップしても地面には掛からない', async () => {
+  const r = await p.evaluate(() => {
+    const me = sky.me, W = sky.world, c = sky.camera
+    let P = null; for (let x = -200; x <= 200 && !P; x += 7) for (let z = 300; z <= 1200 && !P; z += 7) { let ok = true; for (let k = 0; k <= 40 && ok; k += 4) if (W.surfaceAt(x, z + k) !== 'road' || Math.abs(W.groundAt(x, z + k, 50).h) > 0.5) ok = false; if (ok) P = { x, z } }
+    const scr = (x, y, z) => { const v = c.position.clone().set(x, y, z).project(c); return { sx: (v.x * 0.5 + 0.5) * innerWidth, sy: (-v.y * 0.5 + 0.5) * innerHeight, ok: v.z < 1 && Math.abs(v.x) < 0.95 && Math.abs(v.y) < 0.95 } }
+    const air = () => { sky.dbg.teleport(P.x, 22, P.z, 0); Object.assign(me, { grounded: false, vy: 0 }); sky.cam.hd = 0; sky.cam.pitch = 0.8; sky.cam.userT = performance.now() + 1e7; for (let i = 0; i < 40; i++) sky.dbg.step(0); c.updateMatrixWorld() }
+    air(); const g = scr(P.x, 0, P.z + 18); sky.dbg.pressWire(g.sx, g.sy); sky.dbg.step(1)
+    const ground = { ok: g.ok, rope: !!me.rope, isGround: !!(me.rope && me.rope.ground) }
+    // 建物: 一番近い建物の壁の真ん中あたり
+    air(); const B = W.colliders.filter(o => o.kind === 'building' && o.y1 > 20).map(o => ({ o, d: Math.hypot(o.cx - me.x, o.cz - me.z) })).sort((a, b) => a.d - b.d)[0].o
+    let bp = null; for (const [nx, nz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const s = scr(B.cx + nx * B.hw, Math.min(B.y1 - 3, 18), B.cz + nz * B.hl); if (s.ok) { bp = s; break } }
+    let bld = null
+    if (bp) { sky.dbg.pressWire(bp.sx, bp.sy); sky.dbg.step(1); bld = { rope: !!me.rope, isGround: !!(me.rope && me.rope.ground) } }
+    // 地面に立って道をタップ
+    sky.dbg.teleport(P.x, 0, P.z, 0); for (let i = 0; i < 10; i++) sky.dbg.step(1); for (let i = 0; i < 30; i++) sky.dbg.step(0); c.updateMatrixWorld()
+    const g2 = scr(P.x, 0, P.z + 8); sky.dbg.pressWire(g2.sx, g2.sy); sky.dbg.step(1)
+    const onGround = { isGround: !!(me.rope && me.rope.ground) }
+    sky.dbg.teleport(P.x, 0, P.z, 0); sky.cam.userT = -1e9; sky.cam.pitch = 0.15; sky.dbg.step(2)
+    return { ground, bld, onGround }
+  })
+  expect(r.ground.ok && r.ground.isGround && (!r.bld || (r.bld.rope && !r.bld.isGround)) && !r.onGround.isGround, JSON.stringify(r)); return r
 })
 await t('画面タッチ: 近くのビルに掛かる／遠すぎる所は、その向きの届く所に掛かるか×', async () => {
   const r = await p.evaluate(() => {

@@ -1,30 +1,31 @@
 // 空中出前 宙吊軒（1日だけ職場体験 #4）。WIRE ESCAPE のワイヤーと街を使った出前ゲーム
 // 速く飛ぶと料理が崩れて怒られる、ゆっくりだと遅れて怒られる
 import * as THREE from 'three'
-import { GAME } from '../shared/config.js?v=11'
-import { createWorld } from '../shared/track.js?v=11'
-import { buildScene } from './scene.js?v=11'
-import { FX } from './fx.js?v=11'
-import { loadSky, setAniso } from './look.js?v=11'
-import { Q } from './quality.js?v=11'
-import { RunnerModel } from './runnermodel.js?v=11'
-import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=11'
-import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js?v=11'
-import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=11'
-import { createBot, botInput } from '../shared/bot.js?v=11'
-import { drawPayslip, totals } from './payslip.js?v=11'
-import { createStreet, buildPoles } from '../shared/street.js?v=11'
-import { addTown, clearShopFront } from '../shared/town.js?v=11'
-import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=11'
-import { carLights } from './carmodel.js?v=11'
-import { LOW } from './quality.js?v=11'
-import { createAir, stepAir } from '../shared/air.js?v=11'
-import { airPool } from './air3d.js?v=11'
+import { GAME } from '../shared/config.js?v=12'
+import { createWorld } from '../shared/track.js?v=12'
+import { buildScene } from './scene.js?v=12'
+import { FX } from './fx.js?v=12'
+import { loadSky, setAniso } from './look.js?v=12'
+import { Q } from './quality.js?v=12'
+import { RunnerModel } from './runnermodel.js?v=12'
+import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=12'
+import { createRunner, stepRunner, findAnchor, rayHit, floorAt, RUN } from '../shared/runner.js?v=12'
+import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=12'
+import { createBot, botInput } from '../shared/bot.js?v=12'
+import { drawPayslip, totals } from './payslip.js?v=12'
+import { createStreet, buildPoles } from '../shared/street.js?v=12'
+import { addTown, clearShopFront } from '../shared/town.js?v=12'
+import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=12'
+import { carLights } from './carmodel.js?v=12'
+import { LOW } from './quality.js?v=12'
+import { createAir, stepAir } from '../shared/air.js?v=12'
+import { airPool } from './air3d.js?v=12'
 
 const $ = id => document.getElementById(id)
 // ---------------------------------------------------------------- 読み込みの進み具合（ロード画面）
 const LM = THREE.DefaultLoadingManager, bootP = { done: 0, total: 0 }
 LM.onStart = LM.onProgress = (url, a, b) => { bootP.done = a; bootP.total = b; bootP.at = performance.now(); window.__bootSet && window.__bootSet(0.2 + 0.8 * (b ? a / b : 0)) }
+window.__bootDbg = () => ({ ...bootP, ch: charAssets.ready, chFail: charAssets.failed, now: Math.round(performance.now()) })   // 検証用
 function bootWatch(onReady) {
   const t0 = performance.now()
   const tick = () => {
@@ -411,7 +412,27 @@ function aimAt(cx, cy) {
   ndc.set((cx - rc.left) / rc.width * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1)
   ray.setFromCamera(ndc, camera)
   const o = ray.ray.origin, d = ray.ray.direction
-  pendingWire = { at: me && me.rope ? null : rayHit(world, o.x, o.y, o.z, d.x, d.y, d.z, 400), sx: cx, sy: cy }
+  const b = me && me.rope ? null : rayHit(world, o.x, o.y, o.z, d.x, d.y, d.z, 400)
+  let at = b
+  // 地面ワイヤー: 空中にいて、画面の地面（道・屋上）をちゃんとタップした時だけ。建物にも当たる時は建物を優先（ずれたタップで地面に掛けない）
+  if (me && !me.rope && !me.grounded && !me.climbing) {
+    const g = groundRay(o, d, RUN.wireRange + 60)
+    const tb = b ? Math.hypot(b.x - o.x, b.y - o.y, b.z - o.z) : Infinity
+    if (g && !(tb < g.t + 6)) at = { x: g.x, y: g.y, z: g.z, ground: true }
+  }
+  pendingWire = { at, sx: cx, sy: cy }
+}
+// 画面の光線が最初に地面（道・橋・屋上）を下回る点。1m 刻みで進めて、最後の1m を二分して詰める
+function groundRay(o, d, maxT) {
+  const below = t => { const x = o.x + d.x * t, y = o.y + d.y * t, z = o.z + d.z * t; return y <= floorAt(world, x, z, y).h }
+  for (let t = 1; t < maxT; t += 1) {
+    if (!below(t)) continue
+    let a = t - 1, b2 = t
+    for (let i = 0; i < 6; i++) { const m = (a + b2) / 2; if (below(m)) b2 = m; else a = m }
+    const x = o.x + d.x * b2, z = o.z + d.z * b2
+    return { x, y: floorAt(world, x, z, o.y + d.y * b2 + 0.5).h, z, t: b2 }
+  }
+  return null
 }
 // スティックとボタン
 const stick = { x: 0, y: 0, id: null }
@@ -877,7 +898,7 @@ function render(dt) {
   if (aimOn) { const p = aimMark.userData.p; aimMark.visible = true; aimMark.position.set(p.x, p.y, p.z); aimMark.lookAt(camera.position); aimMark.scale.setScalar(Math.max(1, camera.position.distanceTo(aimMark.position) * 0.04)) }
   const wb = document.querySelector('.tbtn[data-k=wire]'); if (wb && wb._aim !== aimOn) { wb._aim = aimOn; wb.classList.toggle('aim', aimOn) }
   // 風の音は速さで
-  if (mode === 'play' && me) { const v3 = Math.hypot(me.vx, me.vy, me.vz); const wl = Snd.loops.wind; if (wl && wl.g) wl.g.gain.value = me.grounded ? 0 : Math.min(0.35, Math.max(0, (v3 - 16) / 40)) }   // 風: 地面では鳴らさない・空中で 16m/s から（2026-11-03 本人「謎の水の音がずっと鳴ってる」）
+  if (mode === 'play' && me) { const v3 = Math.hypot(me.vx, me.vy, me.vz); const wl = Snd.loops.wind; if (wl && wl.g) { const gv = me.grounded ? 0 : Math.min(0.35, Math.max(0, (v3 - 16) / 40)); wl.g.gain.value = Number.isFinite(gv) ? gv : 0 } }   // 風: 地面では鳴らさない・空中で 16m/s から（2026-11-03 本人「謎の水の音がずっと鳴ってる」）
   drawSpeed(mode === 'play' && me ? Math.hypot(me.vx, me.vy, me.vz) : 0, dt)
   // 車と通行人（カメラの近くだけ描く）、昼→夜
   carsDraw.draw(street.traffic.cars, camera.position, dt); pedsDraw.draw(street.peds, camera.position, dt)
