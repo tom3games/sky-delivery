@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>空中出前 宙吊軒 | 1日だけ職場体験</title>
+<meta name="description" content="町中華の出前をワイヤーで空から届ける3Dバカゲー。速く飛ぶとラーメンが崩れて怒られる、ゆっくりだと遅れて怒られる。スマホのブラウザで遊べる。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="空中出前 宙吊軒 | 1日だけ職場体験">
+<meta property="og:description" content="ワイヤーで空から出前。速いと崩れて怒られる、遅いとのびて怒られる。スマホのブラウザで遊べる。">
+<meta property="og:image" content="https://tom3games.github.io/sky-delivery/og.png?v=1">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://tom3games.github.io/sky-delivery/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#1f2a44">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Klee+One:wght@600&family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+</head>
+<body>
+<div id="view"></div>
+
+<!-- タイトル: 店の暖簾 -->
+<section id="title" class="screen">
+  <div class="noren" aria-hidden="true">
+    <div class="rod"></div>
+    <div class="cloth"><span>宙</span></div><div class="cloth"><span>吊</span></div><div class="cloth"><span>軒</span></div>
+  </div>
+  <div class="title-text">
+    <p class="series" data-t="series"></p>
+    <h1 class="logo" data-t="logo"></h1>
+    <p class="master"><b data-t="masterName"></b><span data-t="masterLine"></span></p>
+  </div>
+  <div class="title-actions">
+    <button id="btnStart" class="fuda" data-t="start"></button>
+    <button id="btnHow" class="memo-link" data-t="how"></button>
+  </div>
+  <nav class="foot">
+    <button id="btnLang" class="tlink" data-t="lang"></button>
+    <button id="btnMute" class="tlink"></button>
+    <a class="tlink" href="https://tom3games.github.io/" data-t="more"></a>
+  </nav>
+</section>
+
+<!-- 仕事の説明: 店の貼り紙 -->
+<section id="how" class="screen hidden">
+  <div class="poster">
+    <div class="tape l"></div><div class="tape r"></div>
+    <h2 data-t="howTitle"></h2>
+    <ol id="howList"></ol>
+    <p class="keys" id="howKeys"></p>
+    <button class="fuda small" data-close data-t="ok"></button>
+    <p class="credit" data-t="credit"></p>
+  </div>
+</section>
+
+<!-- 遊び中 -->
+<section id="hud" class="hidden">
+  <div id="ticket" class="ticket">
+    <div class="t-head"><span data-t="ticketHead"></span><span id="tNo"></span></div>
+    <div id="tDish" class="t-dish"></div>
+    <div id="tTo" class="t-to"></div>
+    <div class="t-row"><span id="tDist"></span><b id="tTime"></b></div>
+    <div class="t-foot"><span data-t="shiftLeft"></span> <span id="tShift"></span></div>
+  </div>
+  <div id="bowl" class="bowl" aria-hidden="true">
+    <svg viewBox="0 0 120 90">
+      <defs><clipPath id="bowlIn"><path d="M10 34 Q60 40 110 34 Q104 74 60 78 Q16 74 10 34Z"/></clipPath></defs>
+      <g id="steam" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".7">
+        <path d="M44 22 q-6 -8 0 -16"/><path d="M60 24 q-6 -9 0 -18"/><path d="M76 22 q-6 -8 0 -16"/>
+      </g>
+      <g clip-path="url(#bowlIn)">
+        <rect id="soup" x="0" y="36" width="120" height="60" fill="#c9862f"/>
+        <g id="toppings"><ellipse cx="44" cy="38" rx="9" ry="3.5" fill="#f3d27a"/><rect x="62" y="34" width="16" height="6" rx="2" fill="#8a4a2b"/><path d="M84 36 l10 -2 l-2 5z" fill="#3e7d3a"/></g>
+      </g>
+      <path d="M8 33 Q60 40 112 33 Q106 76 60 80 Q14 76 8 33Z" fill="none" stroke="#1d1a16" stroke-width="3"/>
+      <path d="M12 46 Q60 54 108 46" fill="none" stroke="#b22a22" stroke-width="3" stroke-dasharray="6 5"/>
+      <rect x="44" y="80" width="32" height="6" rx="2" fill="#1d1a16"/>
+    </svg>
+    <div id="bowlWord" class="bowl-word"></div>
+  </div>
+  <div id="say" class="say hidden"></div>
+  <div id="arrow" class="edge-arrow hidden"><svg viewBox="0 0 24 24"><path d="M12 2 L21 20 L12 15 L3 20Z"/></svg><span id="arrowD"></span></div>
+  <div id="miss" class="miss hidden"><span>×</span><small data-t="tooFar"></small></div>
+  <button id="btnPause" class="corner-btn" data-t="pause"></button>
+  <div id="touch" class="touch hidden">
+    <div id="stick" class="stick"><div class="knob"></div></div>
+    <button class="tbtn" data-k="reel"><span data-t="reel"></span></button>
+    <button class="tbtn" data-k="jump"><span data-t="jump"></span></button>
+    <button class="tbtn" data-k="throw"><span data-t="throw"></span></button>
+  </div>
+</section>
+
+<!-- 一時停止 -->
+<section id="pause" class="screen hidden">
+  <div class="poster narrow">
+    <h2 data-t="paused"></h2>
+    <button id="btnResume" class="fuda small" data-t="resume"></button>
+    <button id="btnQuit" class="memo-link" data-t="quit"></button>
+  </div>
+</section>
+
+<!-- 結果: 給料明細 -->
+<section id="result" class="screen hidden">
+  <div class="slip-wrap"><canvas id="slip"></canvas></div>
+  <div class="result-actions">
+    <button id="btnAgain" class="fuda small" data-t="again"></button>
+    <button id="btnSave" class="tlink strong" data-t="save"></button>
+    <a id="btnPost" class="tlink strong" target="_blank" rel="noopener" data-t="post"></a>
+    <button id="btnTitle" class="tlink" data-t="toTitle"></button>
+  </div>
+</section>
+
+<div id="boot" class="boot"><span data-t="loading">仕込み中…</span></div>
+
+<script>
+// 拡大を止める（ピンチ・ダブルタップ・Ctrl+ホイール）。iOS は user-scalable=no を無視するので JS でも止める
+(function(){
+  var opt={passive:false};
+  ['gesturestart','gesturechange','gestureend'].forEach(function(n){document.addEventListener(n,function(e){e.preventDefault()},opt)});
+  document.addEventListener('touchmove',function(e){if(e.touches&&e.touches.length>1)e.preventDefault()},opt);
+  var last=0;document.addEventListener('touchend',function(e){var n=Date.now();if(n-last<300&&!(e.target.closest&&e.target.closest('button,a')))e.preventDefault();last=n},opt);
+  document.addEventListener('dblclick',function(e){e.preventDefault()},opt);
+  window.addEventListener('wheel',function(e){if(e.ctrlKey)e.preventDefault()},opt);
+  window.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&['+','-','=','0',';'].indexOf(e.key)>=0)e.preventDefault()});
+})();
+// 起動失敗の保険
+(function(){
+  var errs=[];
+  window.addEventListener('error',function(e){errs.push((e.message||'error')+' @'+(e.filename||'')+':'+(e.lineno||''))});
+  window.addEventListener('unhandledrejection',function(e){errs.push('reject: '+(e.reason&&e.reason.message||e.reason))});
+  setTimeout(function(){
+    if(window.__skyReady) return;
+    var d=document.createElement('div');d.id='boot-err';
+    d.textContent='起動できませんでした / failed to start\n'+(errs.join('\n')||'(no error captured)')+'\n'+navigator.userAgent;
+    document.body.appendChild(d);
+  },9000);
+})();
+</script>
+<script src="sfx.js?v=1"></script>
+<script type="module" src="js/game.js?v=1"></script>
+</body>
+</html>

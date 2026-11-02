@@ -1,0 +1,585 @@
+// 空中出前 宙吊軒（1日だけ職場体験 #4）。WIRE ESCAPE のワイヤーと街を使った出前ゲーム
+// 速く飛ぶと料理が崩れて怒られる、ゆっくりだと遅れて怒られる
+import * as THREE from 'three'
+import { GAME } from '../shared/config.js'
+import { createWorld } from '../shared/track.js'
+import { buildScene } from './scene.js'
+import { FX } from './fx.js'
+import { loadSky, setAniso } from './look.js'
+import { Q } from './quality.js'
+import { RunnerModel } from './runnermodel.js'
+import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js'
+import { JOB, createShift, stepShift, curOrder, payData, money } from '../shared/delivery.js'
+import { createBot, botInput } from '../shared/bot.js'
+import { drawPayslip, totals } from './payslip.js'
+
+const $ = id => document.getElementById(id)
+const STEP = GAME.step
+const URL_ = 'https://tom3games.github.io/sky-delivery/'
+const store = { get: k => { try { return localStorage.getItem(k) } catch (e) { return null } }, set: (k, v) => { try { localStorage.setItem(k, v) } catch (e) {} } }
+
+// ---------------------------------------------------------------- 文言（日英）
+const T = {
+  ja: {
+    series: '1日だけ職場体験 #4', logo: '空中出前', masterName: '店主', masterLine: '出前は空から行ってくれ。のびても崩れても文句言われるで。',
+    start: '出勤する', how: '仕事の説明', lang: 'English', more: 'ほかのバカゲーも遊ぶ', muteOn: '音を消す', muteOff: '音を出す', loading: '仕込み中',
+    howTitle: '出前の心得', ok: 'わかった',
+    howItems: [
+      '<b>画面をタッチ</b>すると、そのビルにワイヤーを掛ける。届くのは35mまで。もう一度タッチで外す',
+      '<b>巻き取り</b>を入れるとワイヤーが縮んで、振り子が速くなる',
+      '速く飛ぶ・強く着地する・壁にぶつかると、<b>料理が崩れる</b>。右上の丼を見て',
+      '赤い提灯の窓の前で<b>ゆっくり</b>寄れば手渡し。<b>投げる</b>と速いけど崩れる',
+      '崩れすぎても、遅れても怒られる。届けたら店に戻って次を受け取る。3分で5件'
+    ],
+    hintWire: '<small>こつ</small>ビルをタッチするとワイヤーが出る', hintWirePc: '<small>こつ</small>ビルをクリック（か E）でワイヤー。Shift で巻き取り',
+    keysPc: 'PC: WASD・矢印で移動　クリックでワイヤー（E でも可）　Space ジャンプ　Shift 巻き取り　F 投げる　ドラッグで見回す',
+    keysTouch: '左のスティックで移動、画面をタッチでワイヤー、なぞると見回す。壁に向かって走ると登れる',
+    credit: '音: Kenney, rubberduck, artisticdude, poinl, Almitory ほか（CC0）。詳しくは CREDITS.md',
+    ticketHead: '御伝票', shiftLeft: 'シフト残り', toShop: '店に戻って受け取る', shopName: '宙吊軒',
+    floor: (p, f) => `${p}（${f}階の窓）`, dist: d => `あと${d}m`, sec: s => `${s}秒`, late: s => `${s}秒遅れ`,
+    pause: '休憩', paused: '休憩中', resume: '戻る', quit: '店を出る（やめる）',
+    reel: '巻取', jump: '跳ぶ', throw: '投げる', tooFar: '届かない',
+    spill: { 25: 'スープが揺れてる', 50: '半分こぼれた', 75: 'ほとんど残ってない' },
+    pickup: (d, p, f) => `はい次、${d}。${p}の${f}階や`,
+    tooFast: '速すぎて受け取れん！', lateMsg: '遅れてるで！',
+    react: { good: '早っ！ 熱いうちにいただきます', ok: 'ちょっと減ってるけど、まあええわ', throwOk: '窓から入ってきた！？', mess: 'スープどこいったん？ もう頼まん', late: 'のびのびやん…', drop: '下に落ちたで！' },
+    tip: y => `チップ ${y}円`, noTip: 'チップなし', allDone: '全部届けた！', timeUp: 'シフト終わり',
+    job: '空中出前', boss: '店主', again: 'もう一回', save: '画像を保存', post: 'Xでポスト', toTitle: 'タイトル',
+    comments: { great: 'ようやった。明日も来てくれ', mess: '速いのはええけど、丼の中身が旅に出とる', late: '丁寧なんはええけど、麺がのびきっとるで', drop: '人の頭の上に料理を降らすな', few: '空ばっかり見とらんと、出前もしてくれ', ok: 'まあまあや。次は崩さず早く' },
+    stamps: ['不採用', '要研修', '採用', '即採用'],
+    postText: (y, n) => `空中出前のバイトで${n}件届けて手取り${y.toLocaleString()}円でした`
+  },
+  en: {
+    series: 'ONE-DAY JOB #4', logo: 'Sky Delivery', masterName: 'Chef', masterLine: 'Take the orders by air. They complain if it spills, and they complain if it is late.',
+    start: 'Clock in', how: 'How to work', lang: '日本語', more: 'More silly games', muteOn: 'Mute', muteOff: 'Sound on', loading: 'Prepping',
+    howTitle: 'Delivery rules', ok: 'Got it',
+    howItems: [
+      '<b>Tap the screen</b> to shoot a wire at that building. Reach is 35 m. Tap again to let go',
+      '<b>Reel</b> shortens the wire and speeds up your swing',
+      'Flying fast, landing hard and hitting walls <b>spill the food</b>. Watch the bowl',
+      'Get <b>slowly</b> close to the window with the red lantern to hand it over. <b>Throwing</b> is quick but spills',
+      'Spill too much or arrive late and they get angry. Go back to the shop for the next one. 5 orders in 3 minutes'
+    ],
+    hintWire: '<small>こつ</small>ビルをタッチするとワイヤーが出る', hintWirePc: '<small>こつ</small>ビルをクリック（か E）でワイヤー。Shift で巻き取り',
+    hintWire: '<small>Tip</small>Tap a building to shoot a wire', hintWirePc: '<small>Tip</small>Click a building (or E) to wire. Shift to reel',
+    keysPc: 'PC: WASD / arrows move · click to wire (or E) · Space jump · Shift reel · F throw · drag to look',
+    keysTouch: 'Left stick moves, tap to wire, drag to look around. Run into a wall to climb it',
+    credit: 'Sounds: Kenney, rubberduck, artisticdude, poinl, Almitory and others (CC0). See CREDITS.md',
+    ticketHead: 'ORDER', shiftLeft: 'Shift', toShop: 'Back to the shop', shopName: 'Chuzuri-ken',
+    floor: (p, f) => `${p} (floor ${f} window)`, dist: d => `${d} m`, sec: s => `${s}s`, late: s => `${s}s late`,
+    pause: 'Break', paused: 'On break', resume: 'Back to work', quit: 'Leave (quit)',
+    reel: 'Reel', jump: 'Jump', throw: 'Throw', tooFar: 'Too far',
+    spill: { 25: 'Soup is sloshing', 50: 'Half of it is gone', 75: 'Almost nothing left' },
+    pickup: (d, p) => `Next: ${d} for the ${p}`,
+    tooFast: 'Too fast to grab it!', lateMsg: 'You are late!',
+    react: { good: 'Already? Still hot, thanks!', ok: 'A bit spilled, but fine', throwOk: 'It flew in the window!?', mess: 'Where did the soup go?', late: 'The noodles are soggy…', drop: 'It fell on the street!' },
+    tip: y => `Tip ¥${y}`, noTip: 'No tip', allDone: 'All delivered!', timeUp: 'Shift over',
+    job: 'Sky delivery', boss: 'Chef', again: 'Again', save: 'Save image', post: 'Post on X', toTitle: 'Title',
+    comments: { great: 'Good work. Come back tomorrow', mess: 'Fast, sure. The soup went on its own trip', late: 'Careful is nice. The noodles are mush', drop: 'Stop raining food on people', few: 'Stop sightseeing and deliver', ok: 'Not bad. Faster and cleaner next time' },
+    stamps: ['REJECT', 'TRAINING', 'HIRED', 'HIRED!'],
+    postText: (y, n) => `I delivered ${n} orders by wire and took home ¥${y.toLocaleString()}`
+  }
+}
+const PLACE_EN = {}
+let lang = store.get('sky.lang') || ((navigator.language || 'ja').startsWith('ja') ? 'ja' : 'en')
+const t = k => T[lang][k]
+function applyLang() {
+  document.documentElement.lang = lang
+  for (const el of document.querySelectorAll('[data-t]')) { const v = t(el.dataset.t); if (typeof v === 'string') el.textContent = v }
+  $('howList').innerHTML = t('howItems').map((s, i) => `<li data-n="${'一二三四五'[i]}"><span>${s}</span></li>`).join('')
+  $('howKeys').textContent = touchMode ? t('keysTouch') : t('keysPc')
+  $('btnMute').textContent = Snd.muted ? t('muteOff') : t('muteOn')
+}
+
+// ---------------------------------------------------------------- 音（録音素材だけ）
+Snd.muted = store.get('sky.mute') === '1'
+Snd.def({
+  wire: ['snd/swish-1.mp3', 'snd/swish-2.mp3', 'snd/swish-3.mp3'], hook: ['snd/metalClick.mp3', 'snd/metal_02.mp3'],
+  throw: 'snd/swish-5.mp3', land: ['snd/footstep_01.mp3', 'snd/footstep_02.mp3'], bonk: ['snd/thwack-01.mp3', 'snd/thwack-03.mp3'],
+  slosh: ['snd/splash_01.mp3', 'snd/splash_02.mp3'], dish: ['snd/dishes_01.mp3', 'snd/dishes_02.mp3', 'snd/dishes_03.mp3'],
+  ding: 'snd/bell_ding1.mp3', coin: 'snd/coin_drop.mp3', grunt: ['snd/grunt_01.mp3', 'snd/grunt_02.mp3', 'snd/grunt_03.mp3', 'snd/grunt_04.mp3'],
+  crash: 'snd/glass_breaking_01.mp3', shop: 'snd/bell_01.mp3', click: 'snd/click_001.mp3', tick: 'snd/tick_002.mp3',
+  win: 'snd/jingles_SAX01.mp3', meh: 'snd/jingles_SAX03.mp3', lose: 'snd/jingles_PIZZA07.mp3'
+})
+const sfx = (n, o) => Snd.play(n, o)
+
+// ---------------------------------------------------------------- 描画の土台
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true })
+renderer.setPixelRatio(Q.pixelRatio)
+renderer.outputColorSpace = THREE.SRGBColorSpace
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = 1.0
+setAniso(renderer)
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+$('view').appendChild(renderer.domElement)
+const scene = new THREE.Scene()
+scene.fog = new THREE.FogExp2(0xc9d6e2, 0.0022)
+scene.background = new THREE.Color(0xa9c4e0)
+const sun = new THREE.DirectionalLight(0xfff1dc, 3.0)
+sun.userData.dir = new THREE.Vector3(-0.45, 0.62, -0.64).normalize()
+sun.castShadow = true
+sun.shadow.mapSize.set(Q.shadow, Q.shadow)
+Object.assign(sun.shadow.camera, { left: -Q.shadowRange, right: Q.shadowRange, top: Q.shadowRange, bottom: -Q.shadowRange, near: 1, far: 400 })
+sun.shadow.normalBias = 0.04; sun.shadow.bias = -0.0004
+scene.add(sun, sun.target)
+const hemi = new THREE.HemisphereLight(0xc4d8ff, 0x6a5a48, 1.8)
+scene.add(hemi)
+loadSky(renderer, scene, sun, () => { hemi.intensity = 0.4 })
+const camera = new THREE.PerspectiveCamera(64, 1, 0.3, 2400)
+const world = createWorld('city')
+const built = buildScene(scene, world)
+for (const g of built.gates) g.grp.visible = false
+const fx = new FX(scene, world)
+
+// ---------------------------------------------------------------- 店と届け先の見た目
+const S = JOB.shop
+function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; return tx }
+const shopGroup = new THREE.Group()
+{
+  const wall = new THREE.MeshStandardMaterial({ color: 0xd8cdb6, roughness: 0.9 })
+  const roofM = new THREE.MeshStandardMaterial({ color: 0x3a3f4a, roughness: 0.7 })
+  const body = new THREE.Mesh(new THREE.BoxGeometry(7, 3.6, 5), wall); body.position.set(0, 1.8, 0); body.castShadow = body.receiveShadow = true
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(7.8, 0.35, 5.8), roofM); roof.position.set(0, 3.75, 0)
+  // 看板
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(5.4, 1.1, 0.15), new THREE.MeshStandardMaterial({ map: canvasTex(512, 104, (x, w, h) => { x.fillStyle = '#2b1d10'; x.fillRect(0, 0, w, h); x.fillStyle = '#f3ead2'; x.font = '72px "Yuji Syuku", serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('町中華 宙吊軒', w / 2, h / 2 + 4) }), roughness: 0.8 }))
+  sign.position.set(0, 4.4, -2.55); sign.rotation.y = Math.PI
+  // 暖簾（入口は西＝道の側）
+  const norenTex = canvasTex(256, 128, (x, w, h) => { x.fillStyle = '#1f2a44'; x.fillRect(0, 0, w, h); x.fillStyle = '#f3ead2'; x.font = '64px "Yuji Syuku", serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; ['ら', 'ー', 'め'].forEach((c, i) => x.fillText(c, w * (i + 0.5) / 3, h * 0.45)); x.fillStyle = '#16203a'; for (let i = 1; i < 3; i++) x.fillRect(w * i / 3 - 2, 0, 4, h) })
+  const noren = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.4), new THREE.MeshStandardMaterial({ map: norenTex, side: THREE.DoubleSide, roughness: 1 }))
+  noren.position.set(-3.52, 2.6, 0); noren.rotation.y = -Math.PI / 2
+  const lantern = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.9, 14), new THREE.MeshStandardMaterial({ color: 0xc8341f, emissive: 0xc8341f, emissiveIntensity: 0.9 }))
+  lantern.position.set(-3.7, 2.6, 2.1)
+  const lamp = new THREE.PointLight(0xffb070, 6, 10); lamp.position.set(-4.2, 2.6, 0)
+  shopGroup.add(body, roof, sign, noren, lantern, lamp)
+  // 受け取りの場所（地面の丸）
+  const ring = new THREE.Mesh(new THREE.RingGeometry(S.r - 0.5, S.r, 48), new THREE.MeshBasicMaterial({ color: 0xffe2a0, transparent: true, opacity: 0.55, depthWrite: false }))
+  ring.rotation.x = -Math.PI / 2; ring.position.set(-6, 0.05, 0)
+  shopGroup.add(ring)
+  shopGroup.userData.ring = ring
+  shopGroup.position.set(S.x + 6, 0, S.z)
+}
+scene.add(shopGroup)
+// 届け先: 赤い提灯＋明かりのついた窓＋手を振る客
+const custTex = canvasTex(128, 160, (x, w, h) => {
+  x.fillStyle = '#2a2420'
+  x.beginPath(); x.arc(64, 48, 26, 0, Math.PI * 2); x.fill()
+  x.beginPath(); x.moveTo(20, 160); x.quadraticCurveTo(24, 82, 64, 80); x.quadraticCurveTo(104, 82, 108, 160); x.fill()
+  x.lineWidth = 14; x.lineCap = 'round'; x.strokeStyle = '#2a2420'; x.beginPath(); x.moveTo(96, 100); x.lineTo(118, 30); x.stroke()
+})
+const target = new THREE.Group()
+{
+  const win = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.2), new THREE.MeshBasicMaterial({ color: 0xffd9a0 }))
+  const frame = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 2.5), new THREE.MeshStandardMaterial({ color: 0x3a3632 }))
+  frame.position.z = -0.01
+  const cust = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.4), new THREE.MeshBasicMaterial({ map: custTex, transparent: true }))
+  cust.position.set(0, -0.25, 0.02)
+  const lan = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 1.0, 14), new THREE.MeshStandardMaterial({ color: 0xc8341f, emissive: 0xe0401f, emissiveIntensity: 1.4 }))
+  lan.position.set(1.9, 0.4, 0.5)
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.12, 12), new THREE.MeshStandardMaterial({ color: 0x1d1a16 }))
+  cap.position.set(1.9, 0.96, 0.5)
+  const glow = new THREE.PointLight(0xff8040, 8, 14); glow.position.set(0, 0, 1.4)
+  target.add(frame, win, cust, lan, cap, glow)
+  target.userData = { cust, lan }
+}
+scene.add(target)
+// 投げた料理
+const flying = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.22), new THREE.MeshStandardMaterial({ color: 0xc9ced3, metalness: 0.75, roughness: 0.3 }))
+flying.visible = false; scene.add(flying)
+// ワイヤー
+const ropeMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1, 5).rotateX(Math.PI / 2).translate(0, 0, 0.5), new THREE.MeshBasicMaterial({ color: 0x2b2b2b }))
+ropeMesh.visible = false; scene.add(ropeMesh)
+// 狙い（キーボードの E で掛かる所）
+const aimMark = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.75, 24), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthTest: false }))
+aimMark.renderOrder = 5; aimMark.visible = false; scene.add(aimMark)
+
+// ---------------------------------------------------------------- 状態
+let mode = 'title'        // title | play | result
+let me = null, sh = null, model = null
+let demo = null           // タイトルの後ろで飛ぶ CPU
+let paused = false, dbgPause = false, endAt = 0, photo = null, photoScore = -1
+let reelOn = false
+const touchMode = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+document.body.classList.toggle('is-touch', touchMode)
+const cam = { hd: -Math.PI / 2, pitch: 0.15, userT: -1e9, pos: new THREE.Vector3(), off: new THREE.Vector3(-6, 3, 0), look: new THREE.Vector3(), lookOff: new THREE.Vector3(), fov: 64 }
+const _v = new THREE.Vector3(), _w = new THREE.Vector3()
+
+function spawnRunner(id) { return createRunner({ id, spawn: { x: S.x - 4, y: 0, z: S.z, yaw: -Math.PI / 2 } }) }
+function newModel() { if (model) { scene.remove(model.group); model.dispose() } model = new RunnerModel(); scene.add(model.group); return model }
+
+// ---------------------------------------------------------------- 入力
+const keys = new Set()
+const press = { wire: false, jump: false, throw: false }
+let pendingWire = null
+addEventListener('keydown', e => {
+  if (mode !== 'play') return
+  if (e.repeat) return
+  keys.add(e.code)
+  if (e.code === 'KeyE') pendingWire = { at: null, key: true }
+  if (e.code === 'Space') { press.jump = true; e.preventDefault() }
+  if (e.code === 'KeyF') press.throw = true
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') setReel(!reelOn)
+  if (e.code === 'Escape' || e.code === 'KeyP') setPause(!paused)
+})
+addEventListener('keyup', e => keys.delete(e.code))
+// 画面: 軽くタッチ = その建物へワイヤー、なぞる = 見回す
+const gest = new Map()
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2()
+renderer.domElement.addEventListener('pointerdown', e => {
+  Snd.init()
+  if (mode !== 'play' || paused) return
+  gest.set(e.pointerId, { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now(), moved: false })
+})
+addEventListener('pointermove', e => {
+  const g = gest.get(e.pointerId); if (!g) return
+  const dx = e.clientX - g.lx, dy = e.clientY - g.ly; g.lx = e.clientX; g.ly = e.clientY
+  if (!g.moved && Math.hypot(e.clientX - g.x, e.clientY - g.y) > 12) g.moved = true
+  if (!g.moved) return
+  cam.hd -= dx * 0.006; cam.pitch = Math.max(-0.35, Math.min(1, cam.pitch + dy * 0.004)); cam.userT = performance.now()
+})
+addEventListener('pointerup', e => {
+  const g = gest.get(e.pointerId); if (!g) return
+  gest.delete(e.pointerId)
+  if (!g.moved && performance.now() - g.t < 450 && mode === 'play' && !paused) aimAt(e.clientX, e.clientY)
+})
+addEventListener('pointercancel', e => gest.delete(e.pointerId))
+function aimAt(cx, cy) {
+  const rc = renderer.domElement.getBoundingClientRect()
+  ndc.set((cx - rc.left) / rc.width * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1)
+  ray.setFromCamera(ndc, camera)
+  const o = ray.ray.origin, d = ray.ray.direction
+  pendingWire = { at: me && me.rope ? null : rayHit(world, o.x, o.y, o.z, d.x, d.y, d.z, 400), sx: cx, sy: cy }
+}
+// スティックとボタン
+const stick = { x: 0, y: 0, id: null }
+{
+  const el = $('stick'), knob = el.querySelector('.knob')
+  const upd = e => {
+    const r = el.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2
+    let dx = (e.clientX - cx) / (r.width / 2), dy = (e.clientY - cy) / (r.height / 2)
+    const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l }
+    stick.x = dx; stick.y = dy; knob.style.transform = `translate(${dx * 36}px,${dy * 36}px)`
+  }
+  el.addEventListener('pointerdown', e => { Snd.init(); stick.id = e.pointerId; try { el.setPointerCapture(e.pointerId) } catch (er) {} upd(e) })
+  el.addEventListener('pointermove', e => { if (e.pointerId === stick.id) upd(e) })
+  const end = e => { if (e.pointerId !== stick.id) return; stick.id = null; stick.x = stick.y = 0; knob.style.transform = '' }
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end)
+  for (const b of document.querySelectorAll('.tbtn')) b.addEventListener('pointerdown', e => {
+    e.preventDefault(); Snd.init()
+    const k = b.dataset.k
+    if (k === 'reel') setReel(!reelOn)
+    else press[k] = true
+  })
+}
+function setReel(on) {
+  reelOn = !!on && !!(me && me.rope)
+  document.querySelector('.tbtn[data-k=reel]').classList.toggle('lit', reelOn)
+}
+function gather() {
+  let thr = 0, brk = 0, steer = 0
+  if (keys.has('KeyW') || keys.has('ArrowUp')) thr = 1
+  if (keys.has('KeyS') || keys.has('ArrowDown')) brk = 1
+  if (keys.has('KeyA') || keys.has('ArrowLeft')) steer -= 1
+  if (keys.has('KeyD') || keys.has('ArrowRight')) steer += 1
+  if (stick.id != null) {
+    // スティックはカメラの向きに対して倒した方へ走る
+    const mag = Math.min(1, Math.hypot(stick.x, stick.y))
+    if (mag > 0.2) {
+      const want = cam.hd + Math.atan2(-stick.x, -stick.y)
+      let d = want - me.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2
+      steer = Math.max(-1, Math.min(1, -d * 2.4)); thr = Math.abs(d) > 2.4 ? 0.3 : mag
+    }
+  }
+  const inp = { throttle: thr, brake: brk, steer, jump: press.jump, boost: reelOn, wire: false }
+  if (pendingWire) { inp.wire = true; if (pendingWire.at) inp.wireAt = pendingWire.at; me._tap = pendingWire; pendingWire = null }
+  const th = press.throw
+  press.jump = press.throw = false
+  return { inp, th }
+}
+
+// ---------------------------------------------------------------- 画面の切り替え
+function show(id) { for (const s of ['title', 'how', 'pause', 'result']) $(s).classList.toggle('hidden', s !== id); $('hud').classList.toggle('hidden', mode !== 'play') }
+function toTitle() {
+  mode = 'title'; paused = false; me = null; sh = null
+  demo = { r: spawnRunner('demo'), b: createBot('skilled'), sh: createShift(world, 7) }
+  newModel()
+  show('title'); $('touch').classList.add('hidden')
+  Snd.loop('bgm', 'snd/bgm_title.mp3', 0.22); Snd.loop('amb', 'snd/loop_highway.mp3', 0.12)
+}
+function startShift(seed = Math.floor(Math.random() * 1e6)) {
+  Snd.init(); sfx('click')
+  mode = 'play'; paused = false; demo = null; reelOn = false; photo = null; photoScore = -1; endAt = 0
+  me = spawnRunner('me'); sh = createShift(world, seed); sh.seed = seed
+  newModel()
+  cam.hd = -Math.PI / 2; cam.pitch = 0.15; cam.userT = -1e9
+  show(null); $('touch').classList.toggle('hidden', !touchMode)
+  Snd.loop('bgm', 'snd/bgm_play.mp3', 0.16); Snd.loop('amb', 'snd/loop_highway.mp3', 0.16); Snd.loop('wind', 'snd/air_01.mp3', 0.0001)
+  say(t('masterName') + '「' + t('masterLine') + '」', 2.6)
+  hintAt = 4.6
+}
+let hintAt = 0
+function setPause(p) { if (mode !== 'play') return; paused = p; $('pause').classList.toggle('hidden', !p) }
+
+// ---------------------------------------------------------------- 画面の文字
+let sayT = 0
+function say(html, sec = 1.8, cls = '') { const el = $('say'); el.className = 'say ' + cls; el.innerHTML = html; sayT = sec }
+let bowlWordT = 0
+function bowlWord(s) { $('bowlWord').textContent = s; bowlWordT = 1.8 }
+function fmt(s) { s = Math.max(0, Math.ceil(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
+const placeName = o => lang === 'ja' ? o.place[0] : o.place[1]
+const dishName = o => o.dish[lang]
+function updateHud(dt) {
+  const o = curOrder(sh)
+  $('tNo').textContent = `${Math.min(sh.idx + 1, JOB.orders)} / ${JOB.orders}`
+  $('tShift').textContent = fmt(JOB.shiftSec - sh.t)
+  const tTime = $('tTime')
+  if (!o) { $('tDish').textContent = ''; $('tTo').textContent = ''; $('tDist').textContent = ''; tTime.textContent = ''; return }
+  $('tDish').textContent = dishName(o)
+  if (sh.carrying || sh.thrown) {
+    $('tTo').textContent = t('floor')(placeName(o), o.floor)
+    $('tDist').textContent = t('dist')(Math.round(Math.hypot(o.x - me.x, o.z - me.z)))
+    const left = sh.limit - sh.held
+    tTime.textContent = left >= 0 ? t('sec')(Math.ceil(left)) : t('late')(Math.ceil(-left))
+    tTime.classList.toggle('late', left < 0)
+  } else {
+    $('tTo').textContent = t('toShop')
+    $('tDist').textContent = t('dist')(Math.round(Math.hypot(S.x - me.x, S.z - me.z)))
+    tTime.textContent = ''
+  }
+  // 丼
+  const m = sh.carrying ? sh.mess : 0
+  $('soup').setAttribute('y', (36 + m * 0.4).toFixed(1))
+  $('toppings').setAttribute('transform', `translate(0,${(m * 0.42).toFixed(1)})`)
+  $('toppings').style.opacity = m > 70 ? 0 : 1
+  $('steam').style.opacity = sh.carrying ? Math.max(0, 0.75 - sh.held / 60) : 0
+  $('bowl').classList.toggle('empty', !sh.carrying)
+  if (bowlWordT > 0) { bowlWordT -= dt; if (bowlWordT <= 0) $('bowlWord').textContent = '' }
+  if (sayT > 0) { sayT -= dt; $('say').classList.toggle('hidden', sayT <= 0) }
+  document.querySelector('.tbtn[data-k=throw]').classList.toggle('off', !sh.carrying)
+  // 画面の外の届け先へ矢印
+  const goal = sh.carrying || sh.thrown ? _w.set(o.x, o.y, o.z) : _w.set(S.x, 2, S.z)
+  const p = _v.copy(goal).project(camera)
+  const W = innerWidth, H = innerHeight
+  const behind = p.z > 1
+  let sx = (p.x * 0.5 + 0.5) * W, sy = (-p.y * 0.5 + 0.5) * H
+  const off = behind || sx < 30 || sx > W - 30 || sy < 30 || sy > H - 30
+  const ar = $('arrow')
+  ar.classList.remove('hidden')
+  $('arrowD').textContent = Math.round(Math.hypot(goal.x - me.x, goal.z - me.z)) + 'm'
+  if (!off) {
+    // 画面の中: 届け先の真上に下向きの印（遠いと窓が小さくて見つけにくい）
+    ar.style.left = sx + 'px'; ar.style.top = Math.max(40, sy - 44) + 'px'
+    ar.querySelector('svg').style.transform = 'rotate(180deg)'
+  } else {
+    let dx = sx - W / 2, dy = sy - H / 2
+    if (behind) { dx = -dx; dy = -dy; if (Math.abs(dy) < 1) dy = H }
+    const k = Math.min((W / 2 - 40) / Math.abs(dx || 1e-6), (H / 2 - 60) / Math.abs(dy || 1e-6))
+    sx = W / 2 + dx * k; sy = H / 2 + dy * k
+    const tk = $('ticket').getBoundingClientRect(), bw = $('bowl').getBoundingClientRect()
+    for (const rc of [tk, bw]) if (sx > rc.left - 30 && sx < rc.right + 30 && sy > rc.top - 30 && sy < rc.bottom + 30) sy = rc.bottom + 34
+    ar.style.left = sx + 'px'; ar.style.top = sy + 'px'
+    ar.querySelector('svg').style.transform = `rotate(${Math.atan2(dx, -dy)}rad)`
+  }
+}
+
+// ---------------------------------------------------------------- 出来事
+function onRunnerEvent(e) {
+  log.push({ src: 'r', ...e, at: sh ? +sh.t.toFixed(2) : 0 })
+  if (e.t === 'wire') { sfx('wire', { vol: 0.7 }); sfx('hook', { vol: 0.5, delay: 0.06 }) }
+  else if (e.t === 'wireMiss') {
+    sfx('wire', { vol: 0.4, rate: 1.3 })
+    const tp = me._tap
+    if (e.far && tp && tp.sx != null) { const el = $('miss'); el.style.left = tp.sx + 'px'; el.style.top = tp.sy + 'px'; el.classList.remove('hidden'); el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; clearTimeout(el._t); el._t = setTimeout(() => el.classList.add('hidden'), 800) }
+  } else if (e.t === 'unwire') setReel(false)
+  else if (e.t === 'land') { sfx('land', { vol: Math.min(1, 0.3 + e.impact / 20) }); if (e.impact > 14) { sfx('bonk', { vol: 0.5 }); fx.addShake(Math.min(0.6, e.impact / 40)) } }
+  else if (e.t === 'bonk') { sfx('bonk', { vol: 0.8 }); fx.addShake(0.4) }
+}
+function onShiftEvent(e) {
+  log.push({ src: 's', ...e, at: +sh.t.toFixed(2) })
+  const o = curOrder(sh)
+  if (e.t === 'pickup') { sfx('shop', { vol: 0.8 }); say(`<small>${t('masterName')}</small>${t('pickup')(dishName(o), placeName(o), o.floor)}`, 2.4) }
+  else if (e.t === 'spill') {
+    sfx('slosh', { vol: 0.5 + e.level / 200 }); if (e.level >= 50) sfx('dish', { vol: 0.6 })
+    bowlWord(t('spill')[e.level]); const b = $('bowl'); b.classList.remove('tilt'); void b.offsetWidth; b.classList.add('tilt')
+    const m = model.group.position; fx.debrisAt(m.x, m.y + 0.9, m.z, 6, 0xc9862f, { speed: 3, up: 2, size: 0.08 })
+  } else if (e.t === 'tooFast') say(t('tooFast'), 1.2)
+  else if (e.t === 'late') { sfx('tick', { vol: 0.7 }); say(t('lateMsg'), 1.2) }
+  else if (e.t === 'throw') sfx('throw')
+  else if (e.t === 'drop') { sfx('crash', { vol: 0.9 }); sfx('dish'); fx.debrisAt(e.x, 0.5, e.z, 14, 0xc9ced3, { speed: 6, up: 5, size: 0.15 }) }
+  else if (e.t === 'deliver') {
+    const R = T[lang].react
+    const line = e.how === 'drop' ? R.drop : e.reason === 'mess' ? R.mess : e.reason === 'late' ? R.late : e.how === 'throw' ? R.throwOk : e.mess < 25 && e.late === 0 ? R.good : R.ok
+    if (e.angry) { sfx('grunt', { vol: 0.9 }); } else { sfx('ding', { vol: 0.8 }); if (e.tip) sfx('coin', { vol: 0.7, delay: 0.25 }) }
+    say(`${line}<small>${e.tip ? t('tip')(e.tip) : t('noTip')}</small>`, 2.4)
+    // 一番いい受け渡しの瞬間を明細の写真にする
+    const score = (e.angry ? 0 : 100) + (e.how === 'throw' ? 30 : 0) - e.mess
+    if (score > photoScore) { photoScore = score; snapNext = true }
+  } else if (e.t === 'allDone' || e.t === 'timeUp') { say(e.t === 'allDone' ? t('allDone') : t('timeUp'), 2); endAt = 1.6 }
+}
+let snapNext = false
+const log = []
+
+// ---------------------------------------------------------------- 結果
+function showResult() {
+  mode = 'result'
+  Snd.loop('wind', null); Snd.loop('bgm', null)
+  const p = payData(sh, lang), d = { lang, no: 4, job: t('job'), date: new Date().toISOString().slice(0, 10).replace(/-/g, '.'), wage: JOB.wage, hours: JOB.hours, pay: p.pay, ded: p.ded, boss: t('boss') }
+  const net = totals(d).net
+  const C = t('comments'), R = sh.results
+  const messy = R.filter(r => r.reason === 'mess').length, late = R.filter(r => r.reason === 'late').length
+  d.comment = p.drops ? C.drop : p.ok <= 1 ? C.few : messy > late && messy ? C.mess : late ? C.late : p.ok >= 4 && !p.claims ? C.great : C.ok
+  const st = t('stamps'); d.stamp = net >= 7000 ? st[3] : net >= 5000 ? st[2] : net >= 3500 ? st[1] : st[0]
+  d.stampK = 1; d.photo = photo; d.footer = 'tom3games.github.io/sky-delivery'
+  drawPayslip($('slip'), d, { main: '#1f2a44', dark: '#121a2e', accent: '#c8341f', bg: '#2a2016' })
+  sfx(net >= 5000 ? 'win' : net >= 3500 ? 'meh' : 'lose', { vol: 0.8 })
+  $('btnPost').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(t('postText')(net, p.ok)) + '&url=' + encodeURIComponent(URL_)
+  $('touch').classList.add('hidden')
+  show('result')
+  window.__lastNet = net
+}
+$('btnSave').onclick = () => { $('slip').toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'sky-delivery-payslip.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000) }) }
+$('btnStart').onclick = () => startShift()
+$('btnAgain').onclick = () => startShift()
+$('btnTitle').onclick = () => toTitle()
+$('btnHow').onclick = () => { Snd.init(); show('how') }
+for (const b of document.querySelectorAll('[data-close]')) b.onclick = () => show('title')
+$('btnLang').onclick = () => { lang = lang === 'ja' ? 'en' : 'ja'; store.set('sky.lang', lang); applyLang() }
+$('btnMute').onclick = () => { Snd.init(); Snd.setMute(!Snd.muted); store.set('sky.mute', Snd.muted ? '1' : '0'); applyLang() }
+$('btnPause').onclick = () => setPause(true)
+$('btnResume').onclick = () => setPause(false)
+$('btnQuit').onclick = () => { setPause(false); toTitle() }
+
+// ---------------------------------------------------------------- カメラ
+const lerpAngle = (a, b, k) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return a + d * k }
+function updateCamera(dt, c) {
+  if (window.__freeze) return
+  const pos = model.group.position
+  const v = Math.hypot(c.vx, c.vz)
+  let hx = Math.sin(c.yaw), hz = Math.cos(c.yaw)
+  if (v > 8) { const k = c.grounded ? 0.25 : 0.45; hx = hx * (1 - k) + (c.vx / v) * k; hz = hz * (1 - k) + (c.vz / v) * k; const l = Math.hypot(hx, hz); hx /= l; hz /= l }
+  const manual = performance.now() - cam.userT < 1800
+  if (!manual) { cam.hd = lerpAngle(cam.hd, Math.atan2(hx, hz), 1 - Math.exp(-dt * (touchMode ? 2.2 : 5))); cam.pitch += (0.15 - cam.pitch) * (1 - Math.exp(-dt * 1.5)) }
+  hx = Math.sin(cam.hd); hz = Math.cos(cam.hd)
+  let back = 5.2 + Math.min(2.4, v * 0.07), up = 2.1
+  if (camera.aspect < 1) { back += 0.6; up += 0.5 }
+  up += cam.pitch * 4.2; back *= 1 - Math.max(0, cam.pitch) * 0.15
+  let tx = pos.x - hx * back, tz = pos.z - hz * back, ty = pos.y + up
+  // 建物に埋まらないよう手前に寄せる
+  for (let i = 1; i <= 6; i++) {
+    const f = i / 6, px = pos.x + (tx - pos.x) * f, pz = pos.z + (tz - pos.z) * f, py = pos.y + (ty - pos.y) * f
+    let hit = false
+    for (const o of world.nearby(px, pz)) {
+      if (o.slab || o.kind === 'bound' || o.y0 == null || py < o.y0 || py > o.y1) continue
+      const cs = Math.cos(o.yaw || 0), sn = Math.sin(o.yaw || 0), dx = px - o.cx, dz = pz - o.cz
+      if (Math.abs(dx * cs - dz * sn) < o.hw + 0.4 && Math.abs(dx * sn + dz * cs) < o.hl + 0.4) { hit = true; break }
+    }
+    if (hit) { const ff = Math.max(0.25, (i - 1) / 6); tx = pos.x + (tx - pos.x) * ff; tz = pos.z + (tz - pos.z) * ff; ty = pos.y + up * 0.8 + (1 - ff) * 2; break }
+  }
+  const gy = world.groundAt(tx, tz, ty).h + 0.8
+  if (ty < gy) ty = gy
+  cam.off.lerp(_v.set(tx - pos.x, ty - pos.y, tz - pos.z), 1 - Math.exp(-dt * 10))
+  cam.pos.set(pos.x + cam.off.x, pos.y + cam.off.y, pos.z + cam.off.z)
+  cam.lookOff.lerp(_v.set(hx * 10, (camera.aspect < 1 ? 0.4 : 1.1) + 1.3 - cam.pitch * 1.2, hz * 10), 1 - Math.exp(-dt * 12))
+  cam.look.set(pos.x + cam.lookOff.x, pos.y + cam.lookOff.y, pos.z + cam.lookOff.z)
+  camera.position.copy(cam.pos)
+  const sh_ = fx.shake
+  if (sh_ > 0) camera.position.add(_v.set((Math.random() - 0.5) * sh_, (Math.random() - 0.5) * sh_ * 0.7, (Math.random() - 0.5) * sh_))
+  camera.lookAt(cam.look)
+  const asp = camera.aspect
+  const base = asp >= 1 ? 60 : Math.min(84, 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(37)) / asp) * 180 / Math.PI)
+  const fov = base + Math.min(12, Math.hypot(c.vx, c.vy, c.vz) * 0.28)
+  cam.fov += (fov - cam.fov) * (1 - Math.exp(-dt * 4))
+  camera.fov = cam.fov; camera.updateProjectionMatrix()
+}
+
+// ---------------------------------------------------------------- ループ
+function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); fx.setScale && fx.setScale(h) }
+addEventListener('resize', resize); resize()
+let last = performance.now(), acc = 0, frameN = 0
+function stepOnce() {
+  if (mode === 'play' && !paused && me && !sh.over) {
+    const { inp, th } = gather()
+    me.events.length = 0
+    stepRunner(me, inp, STEP, world)
+    stepShift(sh, me, STEP, { throwNow: th })
+    for (const e of me.events) onRunnerEvent(e)
+    for (const e of sh.events) onShiftEvent(e)
+    sh.events.length = 0
+    if (!me.rope && reelOn) setReel(false)
+  } else if (mode === 'title' && demo) {
+    const inp = botInput(demo.b, demo.r, demo.sh, world, STEP)
+    demo.r.events.length = 0
+    stepRunner(demo.r, inp, STEP, world)
+    stepShift(demo.sh, demo.r, STEP, { throwNow: !!inp.throw })
+    demo.sh.events.length = 0
+    if (demo.sh.over) demo.sh = createShift(world, Math.floor(Math.random() * 1000))
+  }
+}
+function frame() {
+  requestAnimationFrame(frame)
+  const now = performance.now()
+  let dt = Math.min(0.1, (now - last) / 1000); last = now
+  if (!dbgPause) { acc += dt; let n = 0; while (acc >= STEP && n < 6) { stepOnce(); acc -= STEP; n++ } if (n >= 6) acc = 0 }
+  else dt = 0
+  render(dt || 0.016)
+}
+function render(dt) {
+  const c = mode === 'title' ? demo && demo.r : me
+  const shift = mode === 'title' ? demo && demo.sh : sh
+  if (c && model) {
+    model.update(c, dt)
+    model.okamochi.visible = !!(shift && shift.carrying)
+    if (c.rope) { const h = model.handWorld; ropeMesh.visible = true; ropeMesh.position.copy(h); ropeMesh.lookAt(c.rope.x, c.rope.y, c.rope.z); ropeMesh.scale.set(1, 1, Math.max(0.1, h.distanceTo(_v.set(c.rope.x, c.rope.y, c.rope.z)))) }
+    else ropeMesh.visible = false
+    updateCamera(dt, c)
+    // 太陽の影を人の周りに合わせる
+    const d = sun.userData.dir; sun.position.set(c.x + d.x * 150, c.y + d.y * 150, c.z + d.z * 150); sun.target.position.set(c.x, c.y, c.z)
+  }
+  // 届け先と投げた料理
+  const o = shift && curOrder(shift)
+  target.visible = !!(o && (shift.carrying || shift.thrown))
+  if (target.visible) {
+    target.position.set(o.x - o.nx * 0.65, o.y, o.z - o.nz * 0.65)
+    target.rotation.y = Math.atan2(o.nx, o.nz)
+    const k = performance.now() / 1000
+    target.userData.cust.rotation.z = Math.sin(k * 6) * 0.08
+    target.userData.lan.position.y = 0.4 + Math.sin(k * 2) * 0.05
+    const dT = camera.position.distanceTo(target.position); target.userData.lan.scale.setScalar(Math.max(1, dT / 30))
+  }
+  shopGroup.userData.ring.material.opacity = shift && !shift.carrying && !shift.thrown ? 0.55 + Math.sin(performance.now() / 250) * 0.25 : 0.15
+  const th = shift && shift.thrown
+  flying.visible = !!th
+  if (th) { flying.position.set(th.x, th.y, th.z); flying.rotation.x += dt * 8; flying.rotation.y += dt * 5 }
+  // キーボードの狙い（PCだけ）
+  aimMark.visible = false
+  if (mode === 'play' && me && !me.rope && !touchMode && frameN % 4 === 0) aimMark.userData.p = findAnchor(world, me)
+  if (mode === 'play' && me && !me.rope && !touchMode && aimMark.userData.p) { const p = aimMark.userData.p; aimMark.visible = true; aimMark.position.set(p.x, p.y, p.z); aimMark.lookAt(camera.position) }
+  // 風の音は速さで
+  if (mode === 'play' && me) { const v3 = Math.hypot(me.vx, me.vy, me.vz); const wl = Snd.loops.wind; if (wl && wl.g) wl.g.gain.value = Math.min(0.5, Math.max(0, (v3 - 8) / 40)) }
+  fx.update(dt)
+  fx.shake = Math.max(0, fx.shake - dt * 2.5)
+  if (mode === 'play' && sh) {
+    if (hintAt > 0 && !paused) { hintAt -= dt; if (hintAt <= 0 && sh.results.length === 0) say(touchMode ? t('hintWire') : t('hintWirePc'), 3.2) }
+    updateHud(dt)
+    if (endAt > 0) { endAt -= dt; if (endAt <= 0) { showResult() } }
+  }
+  renderer.render(scene, camera)
+  if (snapNext) { snapNext = false; const c2 = document.createElement('canvas'); c2.width = 640; c2.height = Math.round(640 * innerHeight / innerWidth); c2.getContext('2d').drawImage(renderer.domElement, 0, 0, c2.width, c2.height); photo = c2 }
+  frameN++
+}
+
+// ---------------------------------------------------------------- 検証用の窓口
+window.sky = {
+  get mode() { return mode }, log, get me() { return me }, get sh() { return sh }, JOB, RUN, world, camera, touchMode,
+  start: seed => startShift(seed), toTitle, showResult, setLang: l => { lang = l; applyLang() }, get lang() { return lang },
+  dbg: {
+    pause: on => { dbgPause = on }, step: n => { for (let i = 0; i < n; i++) stepOnce(); render(STEP) },
+    teleport: (x, y, z, yaw) => { Object.assign(me, { x, y, z, vx: 0, vy: 0, vz: 0, rope: null, climbing: null, grounded: y < 0.1 }); if (yaw != null) me.yaw = yaw },
+    pressWire: (sx, sy) => aimAt(sx, sy), pressJump: () => { press.jump = true }, pressThrow: () => { press.throw = true }, reel: on => setReel(on),
+    keys, stick, say, setMess: m => { sh.mess = m }
+  }
+}
+applyLang()
+toTitle()
+requestAnimationFrame(frame)
+setTimeout(() => { $('boot').classList.add('hidden'); window.__skyReady = true }, 50)
