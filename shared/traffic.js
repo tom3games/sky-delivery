@@ -3,12 +3,12 @@
 // レースの車に当てられると軽く吹き飛び、数秒後に元の流れへ戻る（吹き飛び方は各画面だけの演出）。
 // 2026-10-26 本人「普通に走ってる車が重すぎる」: 軽くして（質量 1.3→0.35、ゆっくり当てても飛ぶ）、
 // 台数を減らし（230m に1台→340m に1台）、遠くの車は高さの計算を省く（近くの車だけ毎回きちんと置く）。
-import { PHYS } from './config.js?v=7'
+import { PHYS } from './config.js?v=8'
 // 一般車の速さ（元の何倍か）。WIRE ESCAPE の画面は 2026-10-30 本人「車早すぎ」で 0.55 倍（main.js が設定）。サーバー・元のテストは 1
 export let TRAFFIC_SPEED = 1
 export function setTrafficSpeed(k) { TRAFFIC_SPEED = k }
 
-export function createTraffic(world) {
+export function createTraffic(world, gap = 340) {   // gap: 車線何 m に1台か
   const cars = []
   const lines = []
   // 幅 18m 以上の真っすぐな通り（路地は走らない）
@@ -23,7 +23,7 @@ export function createTraffic(world) {
     for (const dir of [1, -1]) for (const lane of lanes) lines.push({ ax, az, dx, dz, L, dir, lane })
   }
   lines.forEach((ln, li) => {
-    const n = Math.max(1, Math.round(ln.L / 340))
+    const n = Math.max(1, Math.round(ln.L / gap))
     for (let k = 0; k < n; k++) {
       const kind = ['sedan', 'van', 'taxi', 'sedan', 'sedan', 'van', 'sedan'][(li * 3 + k) % 7]
       cars.push({

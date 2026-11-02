@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Klee+One:wght@600&family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
 </head>
 <body>
@@ -58,6 +58,7 @@
 </section>
 
 <!-- 遊び中 -->
+<canvas id="speedfx"></canvas><div id="hitflash"></div>
 <section id="hud" class="hidden">
   <div id="ticket" class="ticket">
     <div class="t-head"><span data-t="ticketHead"></span><span id="tNo"></span></div>
@@ -142,7 +143,7 @@
   },9000);
 })();
 </script>
-<script src="sfx.js?v=2"></script>
-<script type="module" src="js/game.js?v=7"></script>
+<script src="sfx.js?v=8"></script>
+<script type="module" src="js/game.js?v=8"></script>
 </body>
 </html>

@@ -1,23 +1,25 @@
 // 空中出前 宙吊軒（1日だけ職場体験 #4）。WIRE ESCAPE のワイヤーと街を使った出前ゲーム
 // 速く飛ぶと料理が崩れて怒られる、ゆっくりだと遅れて怒られる
 import * as THREE from 'three'
-import { GAME } from '../shared/config.js?v=7'
-import { createWorld } from '../shared/track.js?v=7'
-import { buildScene } from './scene.js?v=7'
-import { FX } from './fx.js?v=7'
-import { loadSky, setAniso } from './look.js?v=7'
-import { Q } from './quality.js?v=7'
-import { RunnerModel } from './runnermodel.js?v=7'
-import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=7'
-import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js?v=7'
-import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=7'
-import { createBot, botInput } from '../shared/bot.js?v=7'
-import { drawPayslip, totals } from './payslip.js?v=7'
-import { createStreet, buildPoles } from '../shared/street.js?v=7'
-import { addTown, clearShopFront } from '../shared/town.js?v=7'
-import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=7'
-import { carLights } from './carmodel.js?v=7'
-import { LOW } from './quality.js?v=7'
+import { GAME } from '../shared/config.js?v=8'
+import { createWorld } from '../shared/track.js?v=8'
+import { buildScene } from './scene.js?v=8'
+import { FX } from './fx.js?v=8'
+import { loadSky, setAniso } from './look.js?v=8'
+import { Q } from './quality.js?v=8'
+import { RunnerModel } from './runnermodel.js?v=8'
+import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=8'
+import { createRunner, stepRunner, findAnchor, rayHit, RUN } from '../shared/runner.js?v=8'
+import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=8'
+import { createBot, botInput } from '../shared/bot.js?v=8'
+import { drawPayslip, totals } from './payslip.js?v=8'
+import { createStreet, buildPoles } from '../shared/street.js?v=8'
+import { addTown, clearShopFront } from '../shared/town.js?v=8'
+import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=8'
+import { carLights } from './carmodel.js?v=8'
+import { LOW } from './quality.js?v=8'
+import { createAir, stepAir } from '../shared/air.js?v=8'
+import { airPool } from './air3d.js?v=8'
 
 const $ = id => document.getElementById(id)
 const STEP = GAME.step
@@ -32,7 +34,7 @@ const T = {
     howTitle: '出前の心得', ok: 'わかった',
     howItems: [
       'ビルを<b>タッチ</b>でワイヤー。大きいボタンなら前の上へ自動で',
-      '店の前の<b>手前の輪</b>は近場、<b>奥の輪</b>は遠方。遠いほど高い',
+      '注文は<b>近場</b>が多く、ときどき<b>遠方</b>。遠いほど高い',
       '急ぐほど<b>丼の中身が減る</b>。地面を走ると<b>麺がのびる</b>',
       '4分のあいだ注文は途切れない。<b>稼げるだけ稼ぐ</b>'
     ],
@@ -41,13 +43,15 @@ const T = {
     keysTouch: '左のスティックで移動、画面をタッチでワイヤー、なぞると見回す。壁に向かって走ると登れる',
     credit: '音: Kenney, rubberduck, artisticdude, poinl, Almitory ほか（CC0）。詳しくは CREDITS.md',
     ticketHead: '御伝票', shiftLeft: '残り', toShop: '店に戻って受け取る', shopName: '宙吊軒', nth: n => `${n}件目`, earn: y => `稼ぎ ${y.toLocaleString()}円`,
-    pickHead: 'どっちを持っていく', offerNear: (d, m, y) => `近場 ${m}m ${y.toLocaleString()}円`, offerFar: (d, m, y) => `遠方 ${m}m ${y.toLocaleString()}円`,
-    signNear: '近場', signFar: '遠方', yen: y => `${y.toLocaleString()}円`,
+    pickHead: '次の注文', offerNear: (d, m, y) => `近場 ${m}m ${y.toLocaleString()}円`, offerFar: (d, m, y) => `遠方 ${m}m ${y.toLocaleString()}円`,
+    signNear: '近場', signFar: '遠方', signWait: '出前中', yen: y => `${y.toLocaleString()}円`,
     zone: { canal: '運河の向こう', tower: '高層の上の階', edge: '街の外れ', far: '遠くのビル' },
     custNote: { duf: '※デュフ', polite: '※遅れても怒らない', coins: '※小銭で払う', photo: '※写真を撮る。崩すな', net: '※網で受け取る' },
     floor: (p, f) => `${p}（${f}階の窓）`, dist: d => `あと${d}m`, sec: s => `${s}秒`, late: s => `${s}秒遅れ`,
     pause: '休憩', paused: '休憩中', resume: '戻る', quit: '店を出る（やめる）',
     jump: '跳ぶ', throw: '投げる', tooFar: '届かない', bumpPed: '<small>通行人</small>ちょっと！ 前見て！', bumpCar: '<small>運転手</small>危ないやろ！ 歩道歩け！',
+    crowHit: '<small>カラス</small>カァッ！', ballWarn: { river: '<small>河川敷の少年野球</small>危なーい！', lot: '<small>空き地の草野球</small>危なーい！' },
+    ballSorry: ['<small>打った子</small>すみませーん！', '<small>打った子</small>すみませーん！ ボール取ってくださーい！', '<small>打った子</small>ナイスキャッチ…すみませーん！'],
     spill: { 25: 'スープが揺れてる', 50: '半分こぼれた', 75: 'ほとんど残ってない' }, soggy: { 8: '麺がのびてきた', 16: '麺がのびのび' },
     pickup: (d, p, f) => `はい次、${d}。${p}の${f}階や`,
     pickupFar: (z) => `${z}や。気張って行け`,
@@ -77,7 +81,7 @@ const T = {
     howTitle: 'Delivery rules', ok: 'Got it',
     howItems: [
       '<b>Tap</b> a building to shoot a wire. The big button aims ahead for you',
-      'At the shop, the <b>front ring</b> is a near order, the <b>back ring</b> a far one. Far pays more',
+      'Most orders are <b>near</b>, now and then a <b>far</b> one. Far pays more',
       'Rush and <b>the soup spills</b>. Run on the ground and <b>the noodles go soggy</b>',
       'Orders never stop for 4 minutes. <b>Earn as much as you can</b>'
     ],
@@ -86,13 +90,15 @@ const T = {
     keysTouch: 'Left stick moves, tap to wire, drag to look around. Run into a wall to climb it',
     credit: 'Sounds: Kenney, rubberduck, artisticdude, poinl, Almitory and others (CC0). See CREDITS.md',
     ticketHead: 'ORDER', shiftLeft: 'Left', toShop: 'Back to the shop', shopName: 'Chuzuri-ken', nth: n => `#${n}`, earn: y => `Earned ¥${y.toLocaleString()}`,
-    pickHead: 'Pick an order', offerNear: (d, m, y) => `Near ${m}m ¥${y.toLocaleString()}`, offerFar: (d, m, y) => `Far ${m}m ¥${y.toLocaleString()}`,
-    signNear: 'NEAR', signFar: 'FAR', yen: y => `¥${y.toLocaleString()}`,
+    pickHead: 'Next order', offerNear: (d, m, y) => `Near ${m}m ¥${y.toLocaleString()}`, offerFar: (d, m, y) => `Far ${m}m ¥${y.toLocaleString()}`,
+    signNear: 'NEAR', signFar: 'FAR', signWait: 'OUT', yen: y => `¥${y.toLocaleString()}`,
     zone: { canal: 'across the canal', tower: 'high floor', edge: 'edge of town', far: 'far building' },
     custNote: { duf: '* doo-fu', polite: '* never minds lateness', coins: '* pays in 1-yen coins', photo: '* takes photos. Do not spill', net: '* catches it with a net' },
     floor: (p, f) => `${p} (floor ${f} window)`, dist: d => `${d} m`, sec: s => `${s}s`, late: s => `${s}s late`,
     pause: 'Break', paused: 'On break', resume: 'Back to work', quit: 'Leave (quit)',
     jump: 'Jump', throw: 'Throw', tooFar: 'Too far', bumpPed: '<small>Passer-by</small>Hey! Watch it!', bumpCar: '<small>Driver</small>Get off the road!',
+    crowHit: '<small>Crow</small>CAW!', ballWarn: { river: '<small>Little league by the river</small>Heads up!', lot: '<small>Sandlot game</small>Heads up!' },
+    ballSorry: ['<small>The kid who hit it</small>Sorryyy!', '<small>The kid who hit it</small>Sorry! Can you throw it back?', '<small>The kid who hit it</small>Nice catch... sorry!'],
     spill: { 25: 'Soup is sloshing', 50: 'Half of it is gone', 75: 'Almost nothing left' }, soggy: { 8: 'Noodles getting soggy', 16: 'Soggy noodles' },
     pickup: (d, p) => `Next: ${d} for the ${p}`,
     pickupFar: (z) => `That one is ${z}. Go!`,
@@ -133,7 +139,7 @@ function applyLang() {
 Snd.muted = store.get('sky.mute') === '1'
 Snd.def({
   wire: ['snd/swish-1.mp3', 'snd/swish-2.mp3', 'snd/swish-3.mp3'], hook: ['snd/metalClick.mp3', 'snd/metal_02.mp3'],
-  throw: 'snd/swish-5.mp3', land: ['snd/footstep_01.mp3', 'snd/footstep_02.mp3'], bonk: ['snd/thwack-01.mp3', 'snd/thwack-03.mp3'],
+  throw: 'snd/swish-5.mp3', whoosh: 'snd/swish-5.mp3', crow: ['snd/crow_1.mp3', 'snd/crow_2.mp3'], flap: 'snd/wingflap.mp3', bat: 'snd/bat_crack.mp3', gon: 'snd/ball_hit.mp3', land: ['snd/footstep_01.mp3', 'snd/footstep_02.mp3'], bonk: ['snd/thwack-01.mp3', 'snd/thwack-03.mp3'],
   slosh: ['snd/splash_01.mp3', 'snd/splash_02.mp3'], dish: ['snd/dishes_01.mp3', 'snd/dishes_02.mp3', 'snd/dishes_03.mp3'],
   ding: 'snd/bell_ding1.mp3', coin: 'snd/coin_drop.mp3', squeak: ['snd/squeak_1.mp3', 'snd/squeak_2.mp3', 'snd/squeak_3.mp3'],
   coins: ['snd/coins_1.mp3', 'snd/coins_2.mp3', 'snd/coins_3.mp3'], cloth: ['snd/cloth_1.mp3', 'snd/cloth_2.mp3'], grunt: ['snd/grunt_01.mp3', 'snd/grunt_02.mp3', 'snd/grunt_03.mp3', 'snd/grunt_04.mp3'],
@@ -195,35 +201,37 @@ const shopGroup = new THREE.Group()
   shopGroup.position.set(S.x + 6, 0, S.z)
 }
 scene.add(shopGroup)
-// 受け取りの輪が2つ: 手前＝近場（生成り）、奥＝遠方（赤）。横に立て看板（品と見込みの額）
-const pickRings = {}
-for (const tier of ['near', 'far']) {
-  const P = JOB.pick[tier], col = tier === 'far' ? 0xe0452a : 0xffe2a0
+// 受け取りの輪は1つ（暖簾の前）。輪の色と横の立て看板で、今の注文が近場（生成り）か遠方（赤）かを見せる
+// 2026-11-03 本人「輪で選ぶのをやめて、ランダムで近場・遠方が出てくるように」
+const pickRing = (() => {
+  const P = JOB.pick
   const g = new THREE.Group(); g.position.set(P.x, 0, P.z)
-  const ring = new THREE.Mesh(new THREE.RingGeometry(P.r - 0.5, P.r, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.6, depthWrite: false }))
+  const ring = new THREE.Mesh(new THREE.RingGeometry(P.r - 0.5, P.r, 48), new THREE.MeshBasicMaterial({ color: 0xffe2a0, transparent: true, opacity: 0.6, depthWrite: false }))
   ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06
-  const fill = new THREE.Mesh(new THREE.CircleGeometry(P.r - 0.5, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, depthWrite: false }))
+  const fill = new THREE.Mesh(new THREE.CircleGeometry(P.r - 0.5, 48), new THREE.MeshBasicMaterial({ color: 0xffe2a0, transparent: true, opacity: 0.12, depthWrite: false }))
   fill.rotation.x = -Math.PI / 2; fill.position.y = 0.05
-  // 立て看板（道の側＝西を向く）
+  // 立て看板（道の側＝西を向く。輪の奥の店側、暖簾にかからない位置）
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 320
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace
   const board = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.875), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide }))
-  board.position.set(P.r - 0.6, 2.3, (tier === 'far' ? -1 : 1) * 1.6); board.rotation.y = -Math.PI / 2   // 輪の奥（店側）に立てて、通りから2枚並んで見えるように
+  board.position.set(P.r - 0.6, 2.3, 3.2); board.rotation.y = -Math.PI / 2
   const legM = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.9 })
   for (const dz of [-0.6, 0.6]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.2, 0.08), legM); leg.position.set(board.position.x + 0.05, 1.1, board.position.z + dz); g.add(leg) }
   g.add(ring, fill, board)
   scene.add(g)
-  pickRings[tier] = { g, ring, fill, cv, tex, key: '' }
-}
-function drawSign(tier, o) {
-  const R0 = pickRings[tier], key = o ? lang + o.dish.id + offerYen(o) + o.zone + o.cust : lang
+  return { g, ring, fill, cv, tex, key: '', tier: 'near' }
+})()
+function drawSign(o) {
+  const R0 = pickRing, key = o ? lang + o.dish.id + offerYen(o) + o.zone + o.cust + o.tier : lang
   if (R0.key === key) return
   R0.key = key
-  const x = R0.cv.getContext('2d'), W = 256, H = 320, far = tier === 'far'
+  const far = !!(o && o.tier === 'far'), col = far ? 0xe0452a : 0xffe2a0
+  R0.ring.material.color.setHex(col); R0.fill.material.color.setHex(col)
+  const x = R0.cv.getContext('2d'), W = 256, H = 320
   x.fillStyle = far ? '#7d1d14' : '#f3ead2'; x.fillRect(0, 0, W, H)
   x.strokeStyle = far ? '#f3ead2' : '#2b1d10'; x.lineWidth = 8; x.strokeRect(10, 10, W - 20, H - 20)
   x.fillStyle = far ? '#f3ead2' : '#2b1d10'; x.textAlign = 'center'; x.textBaseline = 'middle'
-  x.font = '86px "Yuji Syuku", serif'; x.fillText(t(far ? 'signFar' : 'signNear'), W / 2, 84)
+  x.font = '86px "Yuji Syuku", serif'; x.fillText(o ? t(far ? 'signFar' : 'signNear') : t('signWait'), W / 2, 84)
   if (o) {
     x.font = '600 52px "Klee One", serif'; x.fillText(t('yen')(offerYen(o)), W / 2, 176)
     x.font = '600 30px "Klee One", serif'; x.fillText(far ? t('zone')[o.zone] : dishName(o), W / 2, 238)
@@ -237,6 +245,8 @@ const poles3d = buildPoles3d(scene, buildPoles(world, JOB.shop))
 const houses3d = buildHouses3d(scene, town.houses)
 const carsDraw = trafficPool(scene, LOW), pedsDraw = pedPool(scene, LOW)
 let street = createStreet(world, 1)
+let air = createAir(world, 1)   // カラスと野球ボール（2026-11-03 本人「空中の邪魔を足して」）
+const airDraw = airPool(scene)
 // 昼→夕方→夜（2026-11-02 本人「時間が経つとだんだん背景も暗くなっていくように」）。空の上に色の膜を重ねる
 const skyTint = new THREE.Mesh(new THREE.SphereGeometry(1800, 24, 12), new THREE.MeshBasicMaterial({ color: 0xff8a3c, side: THREE.BackSide, transparent: true, opacity: 0, depthWrite: false, fog: false }))
 skyTint.renderOrder = -1; scene.add(skyTint)
@@ -309,10 +319,11 @@ let demo = null           // タイトルの後ろで飛ぶ CPU
 let paused = false, dbgPause = false, endAt = 0, photo = null, photoScore = -1, afterDel = null
 const touchMode = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
 document.body.classList.toggle('is-touch', touchMode)
+let hitStop = 0, fovKick = 0, flashA = 0   // 受け取り・手渡しの瞬間に少し止める・視野を一瞬動かす・光る（しっぽ取り v5 と同じ）
 const cam = { hd: -Math.PI / 2, pitch: 0.15, userT: -1e9, pos: new THREE.Vector3(), off: new THREE.Vector3(-6, 3, 0), look: new THREE.Vector3(), lookOff: new THREE.Vector3(), fov: 64 }
 const _v = new THREE.Vector3(), _w = new THREE.Vector3()
 
-function spawnRunner(id) { return createRunner({ id, spawn: { x: S.x - 9, y: 0, z: S.z, yaw: Math.PI / 2 } }) }   // 店と2つの輪と立て看板が見える所から始める
+function spawnRunner(id) { return createRunner({ id, spawn: { x: S.x - 9, y: 0, z: S.z, yaw: Math.PI / 2 } }) }   // 店と受け取りの輪と立て看板が見える所から始める
 function newModel() { if (model) { scene.remove(model.group); model.dispose() } model = charAssets.ready ? new CharRunnerModel() : new RunnerModel(); scene.add(model.group); return model }
 // 人物の素材は裏で読む。読み終わったら今の人形と差し替える
 loadCharAssets().then(() => { if (charAssets.ready && model && !(model instanceof CharRunnerModel)) newModel() })
@@ -422,7 +433,7 @@ function gather() {
 function show(id) { for (const s of ['title', 'how', 'pause', 'result']) $(s).classList.toggle('hidden', s !== id); $('hud').classList.toggle('hidden', mode !== 'play') }
 function toTitle() {
   mode = 'title'; paused = false; me = null; sh = null
-  demo = { r: spawnRunner('demo'), b: createBot('skilled'), sh: createShift(world, 7) }
+  demo = { r: spawnRunner('demo'), b: createBot('skilled'), sh: createShift(world, 7) }; air = createAir(world, 7)
   newModel()
   show('title'); $('touch').classList.add('hidden')
   Snd.loop('bgm', 'snd/bgm_title.mp3', 0.22); Snd.loop('amb', 'snd/loop_highway.mp3', 0.12)
@@ -430,7 +441,7 @@ function toTitle() {
 function startShift(seed = Math.floor(Math.random() * 1e6)) {
   Snd.init(); sfx('click')
   mode = 'play'; paused = false; demo = null; photo = null; photoScore = -1; endAt = 0; afterDel = null
-  me = spawnRunner('me'); sh = createShift(world, seed); sh.seed = seed; street = createStreet(world, seed)
+  me = spawnRunner('me'); sh = createShift(world, seed); sh.seed = seed; street = createStreet(world, seed); air = createAir(world, seed)
   newModel()
   cam.hd = Math.PI / 2; cam.pitch = 0.4; cam.userT = -1e9
   show(null); $('touch').classList.toggle('hidden', !touchMode)
@@ -456,7 +467,7 @@ function updateHud(dt) {
   $('tShift').textContent = fmt(JOB.shiftSec - sh.t)
   const ey = earned(sh); if ($('tEarn')._y !== ey) { $('tEarn')._y = ey; $('tEarn').textContent = t('earn')(ey) }
   const tTime = $('tTime'), tk = $('ticket')
-  tk.classList.toggle('at-shop', !o)
+  tk.classList.toggle('at-shop', !o); tk.classList.toggle('far-offer', !o && !!sh.offer && sh.offer.tier === 'far')
   if (sh.carrying || sh.thrown) {
     $('tDish').textContent = dishName(o)
     $('tTo').textContent = t('floor')(placeName(o), o.floor) + (o.zone ? ' ' + t('zone')[o.zone] : '')
@@ -465,11 +476,11 @@ function updateHud(dt) {
     const left = sh.limit - sh.held
     tTime.textContent = left >= 0 ? t('sec')(Math.ceil(left)) : t('late')(Math.ceil(-left))
     tTime.classList.toggle('late', left < 0)
-  } else if (sh.offers) {
-    const N = sh.offers.near, F = sh.offers.far
+  } else if (sh.offer) {
+    const N = sh.offer
     $('tDish').textContent = t('pickHead')
-    $('tTo').textContent = t('offerNear')(dishName(N), Math.round(N.dist), offerYen(N))
-    $('tNote').textContent = t('offerFar')(dishName(F), Math.round(F.dist), offerYen(F))
+    $('tTo').textContent = t(N.tier === 'far' ? 'offerFar' : 'offerNear')(dishName(N), Math.round(N.dist), offerYen(N))
+    $('tNote').textContent = N.tier === 'far' ? t('zone')[N.zone] : dishName(N)
     $('tDist').textContent = t('dist')(Math.round(Math.hypot(S.x - me.x, S.z - me.z)))
     tTime.textContent = ''
   }
@@ -484,28 +495,22 @@ function updateHud(dt) {
   if (sayT > 0) { sayT -= dt; $('say').classList.toggle('hidden', sayT <= 0) }
   // 画面の外の届け先へ矢印
   const goal = sh.carrying || sh.thrown ? _w.set(o.x, o.y + 1.8, o.z) : _w.set(S.x, 5.5, S.z)   // 窓の上に出す（客の顔に重ねない）
-  const p = _v.copy(goal).project(camera)
-  const W = innerWidth, H = innerHeight
-  const behind = p.z > 1
-  let sx = (p.x * 0.5 + 0.5) * W, sy = (-p.y * 0.5 + 0.5) * H
-  const off = behind || sx < 30 || sx > W - 30 || sy < 30 || sy > H - 30
+  // 方角だけを示す（2026-11-03 本人「矢印がすごい分かりづらい。高さを表現すると分かりづらい。方角だけでいい」）: 画面の上、伝票と丼のあいだに固定。水平の向きだけで回る
   const ar = $('arrow')
   ar.classList.remove('hidden')
   $('arrowD').textContent = Math.round(Math.hypot(goal.x - me.x, goal.z - me.z)) + 'm'
-  if (!off) {
-    // 画面の中: 届け先の真上に下向きの印（遠いと窓が小さくて見つけにくい）
-    ar.style.left = sx + 'px'; ar.style.top = Math.max(40, sy - 44) + 'px'
-    ar.querySelector('svg').style.transform = 'rotate(180deg)'
-  } else {
-    let dx = sx - W / 2, dy = sy - H / 2
-    if (behind) { dx = -dx; dy = -dy; if (Math.abs(dy) < 1) dy = H }
-    const k = Math.min((W / 2 - 40) / Math.abs(dx || 1e-6), (H / 2 - 60) / Math.abs(dy || 1e-6))
-    sx = W / 2 + dx * k; sy = H / 2 + dy * k
-    const tk = $('ticket').getBoundingClientRect(), bw = $('bowl').getBoundingClientRect()
-    for (const rc of [tk, bw]) if (sx > rc.left - 30 && sx < rc.right + 30 && sy > rc.top - 30 && sy < rc.bottom + 30) sy = rc.bottom + 34
-    ar.style.left = sx + 'px'; ar.style.top = sy + 'px'
-    ar.querySelector('svg').style.transform = `rotate(${Math.atan2(dx, -dy)}rad)`
-  }
+  ar.querySelector('svg').style.transform = `rotate(${compassAng(goal.x, goal.z)}rad)`
+  const tkR = $('ticket').getBoundingClientRect(), bw = $('bowl').getBoundingClientRect()
+  const cx = Math.round((tkR.right + bw.left) / 2)
+  if (ar._cx !== cx) { ar._cx = cx; ar.style.left = cx + 'px' }
+}
+
+// カメラの前向き（水平）に対して、自分から目標 (x, z) がどっちか。0 = 正面、+ = 右。高さは使わない
+function compassAng(gx, gz) {
+  camera.updateMatrixWorld()   // HUD はカメラを動かした後・描く前に呼ばれるので、今のカメラの向きにそろえる
+  const e = camera.matrixWorld.elements, fx = -e[8], fz = -e[10], rx = -fz, rz = fx   // 右 = 前を右へ90度（傾きの影響を受けない）
+  const dx = gx - me.x, dz = gz - me.z
+  return Math.atan2(dx * rx + dz * rz, dx * fx + dz * fz)
 }
 
 // ---------------------------------------------------------------- 出来事
@@ -519,8 +524,19 @@ function onRunnerEvent(e) {
   }
   else if (e.t === 'land') { sfx('land', { vol: Math.min(1, 0.3 + e.impact / 20) }); if (e.impact > 14) { sfx('bonk', { vol: 0.5 }); fx.addShake(Math.min(0.6, e.impact / 40)) } }
   else if (e.t === 'bonk') { sfx('bonk', { vol: 0.8 }); fx.addShake(0.4) }
+  else if (e.t === 'unwire' && !e.auto) { const v = Math.hypot(me.vx, me.vy, me.vz); if (v > 16) { sfx('whoosh', { vol: Math.min(0.8, v / 50), rate: 0.9 + Math.random() * 0.2 }); fovKick = Math.min(6, (v - 16) * 0.3) } }   // 速く離すと風を切る
   else if (e.t === 'ped') { sfx('bonk', { vol: 0.6, rate: 1.2 }); fx.addShake(0.3); say(t('bumpPed'), 1.4) }
   else if (e.t === 'car') { sfx('bonk', { vol: 1, rate: 0.8 }); fx.addShake(0.7); say(t('bumpCar'), 1.6) }
+}
+// カラスと野球ボール（shared/air.js）。音は自分からの距離で小さく
+function onAirEvent(e) {
+  log.push({ src: 'a', ...e, at: sh ? +sh.t.toFixed(2) : 0 })
+  const d = me ? Math.hypot(e.x - me.x, e.z - me.z) : 0, nv = Math.max(0, 1 - d / 70)
+  if (e.t === 'flock') { sfx('crow', { vol: 0.75 }); sfx('flap', { vol: 0.35, delay: 0.15 }) }
+  else if (e.t === 'scare') { if (nv > 0) { sfx('flap', { vol: 0.6 * nv }); sfx('crow', { vol: 0.6 * nv, delay: 0.12 }) } }
+  else if (e.t === 'crow') { sfx('crow', { vol: 1 }); sfx('flap', { vol: 0.7 }); sfx('bonk', { vol: 0.4, rate: 1.3 }); fx.addShake(0.4); hitStop = 0.04; fx.debrisAt(e.x, e.y, e.z, 12, 0x1a1a1e, { speed: 4, up: 2, size: 0.1 }); say(t('crowHit'), 1.4) }
+  else if (e.t === 'ballWarn') { sfx('bat', { vol: 0.9 }); say(t('ballWarn')[e.from], 2.2) }
+  else if (e.t === 'ball') { sfx('gon', { vol: 1 }); fx.addShake(0.8); hitStop = 0.06; const L = t('ballSorry'); say(L[(sh ? sh.results.length + Math.round(sh.t) : 0) % L.length], 2.4) }
 }
 function onShiftEvent(e) {
   log.push({ src: 's', ...e, at: +sh.t.toFixed(2) })
@@ -528,6 +544,7 @@ function onShiftEvent(e) {
   const who = o => `<small>${placeName(o)}${lang === 'ja' ? 'のお客' : ''}</small>`
   if (e.t === 'pickup') {
     sfx('shop', { vol: 0.8 })
+    hitStop = 0.04; flashA = 0.45; fovKick = -3; fx.addShake(0.15)
     if (o.cust === 'duf') { say(`<small>${t('masterName')}「${t('dufMaster')}」</small>${t('custPick').duf}`, 2.8); custSfx('duf') }
     else if (o.cust !== 'normal') say(who(o) + t('custPick')[o.cust], 2.8)
     else if (o.tier === 'far') say(`<small>${t('masterName')}</small>${t('pickupFar')(t('zone')[o.zone])}`, 2.4)
@@ -549,6 +566,11 @@ function onShiftEvent(e) {
     const R = c === 'normal' ? T[lang].react : t('custReact')[c]
     const line = e.how === 'drop' ? R.drop : e.how === 'throw' && !e.angry ? (R.throwOk || R.ok) : R[kind]
     if (e.angry) { sfx('grunt', { vol: 0.9 }); } else { sfx('ding', { vol: 0.8 }); if (e.tip && c !== 'coins') sfx('coin', { vol: 0.7, delay: 0.25 }) }
+    // 手渡しの瞬間: 一瞬止まって光る。チップが多いほど長く（怒られた時は止まって揺れるだけ）
+    if (e.how !== 'drop') {
+      if (e.angry) { hitStop = 0.05; fx.addShake(0.4) }
+      else { hitStop = Math.min(0.12, 0.06 + e.tip / 4000); flashA = 1; fovKick = -7; fx.addShake(0.5); fx.debrisAt(e.x, e.y + 0.4, e.z, 14, 0xffe2a0, { speed: 7, up: 5, size: 0.1 }) }
+    }
     custSfx(c, true, e)
     const tipTxt = c === 'coins' && e.tip ? t('coinTip')(e.tip - (e.early || 0)) + (e.early ? ' +' + t('yen')(e.early) : '') : e.tip ? t('tip')(e.tip) : t('noTip')
     say(`${line}<small>${tipTxt}</small>`, 2.6)
@@ -661,9 +683,14 @@ function updateCamera(dt, c) {
   camera.lookAt(cam.look)
   const asp = camera.aspect
   const base = asp >= 1 ? 60 : Math.min(84, 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(37)) / asp) * 180 / Math.PI)
-  const fov = base + Math.min(12, Math.hypot(c.vx, c.vy, c.vz) * 0.28)
+  const fov = base + Math.min(18, Math.max(0, Math.hypot(c.vx, c.vy, c.vz) - 6) * 0.5)   // 速いほど広く（最大 +12 から +18 に）
   cam.fov += (fov - cam.fov) * (1 - Math.exp(-dt * 4))
-  camera.fov = cam.fov; camera.updateProjectionMatrix()
+  fovKick *= Math.exp(-dt * 6)
+  camera.fov = cam.fov + fovKick; camera.updateProjectionMatrix()
+  // 振り子の向きに少しだけ体ごと傾く（カメラの右向きに対する横の速さから）
+  const me_ = camera.matrixWorld.elements, rl = Math.hypot(me_[0], me_[2]) || 1, lat = (c.vx * me_[0] + c.vz * me_[2]) / rl
+  cam.bank = (cam.bank || 0) + (Math.max(-0.1, Math.min(0.1, (c.rope ? lat : 0) * -0.004)) - (cam.bank || 0)) * (1 - Math.exp(-dt * 3))
+  camera.rotateZ(cam.bank)
 }
 
 // ---------------------------------------------------------------- ループ
@@ -677,6 +704,9 @@ function stepOnce() {
     street.update(STEP, me)
     stepRunner(me, inp, STEP, world)
     street.collide(me)
+    stepAir(air, me, STEP, true)
+    for (const e of air.events) onAirEvent(e)
+    air.events.length = 0
     stepShift(sh, me, STEP, { throwNow: th })
     for (const e of me.events) onRunnerEvent(e)
     for (const e of sh.events) onShiftEvent(e)
@@ -687,6 +717,7 @@ function stepOnce() {
     street.update(STEP, demo.r)
     stepRunner(demo.r, inp, STEP, world)
     street.collide(demo.r)
+    stepAir(air, demo.r, STEP, false); air.events.length = 0
     stepShift(demo.sh, demo.r, STEP, { throwNow: !!inp.throw })
     demo.sh.events.length = 0
     if (demo.sh.over) demo.sh = createShift(world, Math.floor(Math.random() * 1000))
@@ -696,9 +727,36 @@ function frame() {
   requestAnimationFrame(frame)
   const now = performance.now()
   let dt = Math.min(0.1, (now - last) / 1000); last = now
-  if (!dbgPause) { acc += dt; let n = 0; while (acc >= STEP && n < 6) { stepOnce(); acc -= STEP; n++ } if (n >= 6) acc = 0 }
+  if (hitStop > 0) { hitStop -= dt; acc = 0 }   // ヒットストップ: ほんの一瞬だけ止める
+  else if (!dbgPause) { acc += dt; let n = 0; while (acc >= STEP && n < 6) { stepOnce(); acc -= STEP; n++ } if (n >= 6) acc = 0 }
   else dt = 0
   render(dt || 0.016)
+}
+// 速さの線: 画面のふちから中心へ流れる白い線。速いほど多く濃く（20m/s から。しっぽ取り v5 と同じ）
+const spd = $('speedfx'), sctx = spd.getContext('2d'), hf = $('hitflash')
+const lines = Array.from({ length: 46 }, () => ({ a: Math.random() * Math.PI * 2, p: Math.random(), s: 0.6 + Math.random() * 0.8, w: 1 + Math.random() * 2 }))
+let spdOn = false
+function drawSpeed(v, dt) {
+  if (!window.__holdFx) flashA = Math.max(0, flashA - dt * 5)   // __holdFx: 撮影用に光を止めておく
+  hf.style.opacity = flashA.toFixed(2)
+  const k = Math.max(0, Math.min(1, (v - 20) / 18))
+  window.__speedK = k
+  if (k <= 0) { if (spdOn) { sctx.clearRect(0, 0, spd.width, spd.height); spdOn = false } return }
+  spdOn = true
+  const W = innerWidth, H = innerHeight, dpr = Math.min(2, devicePixelRatio || 1)
+  if (spd.width !== Math.round(W * dpr) || spd.height !== Math.round(H * dpr)) { spd.width = Math.round(W * dpr); spd.height = Math.round(H * dpr) }
+  sctx.setTransform(dpr, 0, 0, dpr, 0, 0); sctx.clearRect(0, 0, W, H)
+  const cx = W / 2, cy = H * 0.45, R = Math.hypot(W, H) * 0.55
+  sctx.lineCap = 'round'
+  const n = Math.round(lines.length * (0.35 + 0.65 * k))
+  for (let i = 0; i < n; i++) {
+    const L = lines[i]
+    L.p += dt * L.s * (1.6 + k * 2.4); if (L.p > 1) { L.p -= 1; L.a = Math.random() * Math.PI * 2 }
+    const r1 = R * (1.05 - L.p * 0.45), r0 = r1 - R * (0.12 + 0.2 * k) * L.s
+    const ca = Math.cos(L.a), sa = Math.sin(L.a)
+    sctx.strokeStyle = `rgba(255,255,255,${(0.1 + 0.32 * k) * Math.min(1, L.p * 4)})`; sctx.lineWidth = L.w
+    sctx.beginPath(); sctx.moveTo(cx + ca * r0, cy + sa * r0); sctx.lineTo(cx + ca * r1, cy + sa * r1); sctx.stroke()
+  }
 }
 function render(dt) {
   const c = mode === 'title' ? demo && demo.r : me
@@ -729,13 +787,10 @@ function render(dt) {
     target.userData.lan.position.y = 0.4 + Math.sin(k * 2) * 0.05
     const dT = camera.position.distanceTo(target.position); target.userData.lan.scale.setScalar(Math.max(1, dT / 30))
   }
-  const atShop = !!(shift && !shift.carrying && !shift.thrown && shift.offers)
-  for (const tier of ['near', 'far']) {
-    const R0 = pickRings[tier]
-    R0.ring.material.opacity = atShop ? 0.55 + Math.sin(performance.now() / 250 + (tier === 'far' ? 1.5 : 0)) * 0.25 : 0.12
-    R0.fill.visible = atShop
-    if (shift && shift.offers) drawSign(tier, shift.offers[tier]); else drawSign(tier, null)
-  }
+  const atShop = !!(shift && !shift.carrying && !shift.thrown && shift.offer)
+  pickRing.ring.material.opacity = atShop ? 0.55 + Math.sin(performance.now() / 250) * 0.25 : 0.12
+  pickRing.fill.visible = atShop
+  drawSign(shift && shift.offer ? shift.offer : null)
   const th = shift && shift.thrown
   flying.visible = !!th
   if (th) { flying.position.set(th.x, th.y, th.z); flying.rotation.x += dt * 8; flying.rotation.y += dt * 5 }
@@ -747,9 +802,11 @@ function render(dt) {
   if (aimOn) { const p = aimMark.userData.p; aimMark.visible = true; aimMark.position.set(p.x, p.y, p.z); aimMark.lookAt(camera.position); aimMark.scale.setScalar(Math.max(1, camera.position.distanceTo(aimMark.position) * 0.04)) }
   const wb = document.querySelector('.tbtn[data-k=wire]'); if (wb && wb._aim !== aimOn) { wb._aim = aimOn; wb.classList.toggle('aim', aimOn) }
   // 風の音は速さで
-  if (mode === 'play' && me) { const v3 = Math.hypot(me.vx, me.vy, me.vz); const wl = Snd.loops.wind; if (wl && wl.g) wl.g.gain.value = Math.min(0.5, Math.max(0, (v3 - 8) / 40)) }
+  if (mode === 'play' && me) { const v3 = Math.hypot(me.vx, me.vy, me.vz); const wl = Snd.loops.wind; if (wl && wl.g) wl.g.gain.value = Math.min(0.75, Math.max(0, (v3 - 6) / 32)) }
+  drawSpeed(mode === 'play' && me ? Math.hypot(me.vx, me.vy, me.vz) : 0, dt)
   // 車と通行人（カメラの近くだけ描く）、昼→夜
   carsDraw.draw(street.traffic.cars, camera.position, dt); pedsDraw.draw(street.peds, camera.position, dt)
+  airDraw.draw(air, camera.position, dt, (x, z) => world.groundAt(x, z, 3).h)
   applyDayTime(mode === 'play' && sh ? Math.min(1, sh.t / JOB.shiftSec) : mode === 'result' && sh ? 1 : 0)
   skyTint.position.copy(camera.position)
   fx.update(dt)
@@ -766,12 +823,12 @@ function render(dt) {
 
 // ---------------------------------------------------------------- 検証用の窓口
 window.sky = {
-  get mode() { return mode }, log, get me() { return me }, get sh() { return sh }, JOB, RUN, world, camera, touchMode, cam,
+  get mode() { return mode }, log, get hitStop() { return hitStop }, get flashA() { return flashA }, get fovKick() { return fovKick }, get me() { return me }, get sh() { return sh }, get air() { return air }, JOB, RUN, world, camera, touchMode, cam,
   start: seed => startShift(seed), toTitle, showResult, setLang: l => { lang = l; applyLang() }, get lang() { return lang },
   dbg: {
     pause: on => { dbgPause = on }, step: n => { for (let i = 0; i < n; i++) stepOnce(); render(STEP) },
     teleport: (x, y, z, yaw) => { Object.assign(me, { x, y, z, vx: 0, vy: 0, vz: 0, rope: null, climbing: null, grounded: y < 0.1 }); if (yaw != null) me.yaw = yaw },
-    pressWire: (sx, sy) => aimAt(sx, sy), pressJump: () => { press.jump = true }, pressThrow: () => { press.throw = true }, wireAuto: () => { pendingWire = { at: null, key: true } },
+    pressWire: (sx, sy) => aimAt(sx, sy), compass: (x, z) => compassAng(x, z), pressJump: () => { press.jump = true }, pressThrow: () => { press.throw = true }, wireAuto: () => { pendingWire = { at: null, key: true } },
     keys, stick, say, setMess: m => { sh.mess = m }, target, get model() { return model },
     render: n => { for (let i = 0; i < n; i++) render(1 / 30) },
     // 目の前の窓に客を出す（撮影と検証用）: 今の注文の客の種類を変えて、窓の前 dist m に浮かせる

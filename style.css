@@ -59,6 +59,9 @@ button,a{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touc
 
 /* ---------- 遊び中 ---------- */
 #hud{position:fixed;inset:0;z-index:5;pointer-events:none}
+/* 速さの線と、受け渡しの瞬間の光（しっぽ取り v5 と同じ。2026-11-03 本人「ワイヤー関連は全部迫力のある感じに」） */
+#speedfx{position:fixed;inset:0;width:100%;height:100%;z-index:4;pointer-events:none}
+#hitflash{position:fixed;inset:0;z-index:4;pointer-events:none;background:radial-gradient(ellipse at center,rgba(255,255,255,0) 35%,rgba(255,244,214,.55) 100%);opacity:0}
 .ticket{position:absolute;left:max(10px,env(safe-area-inset-left));top:max(10px,env(safe-area-inset-top));width:min(196px,46vw);background:var(--paper);padding:8px 11px 7px;font-family:var(--hand);transform:rotate(-1.2deg);box-shadow:0 3px 10px rgba(0,0,0,.28);border-top:4px solid var(--red)}
 .ticket::after{content:'';position:absolute;left:0;right:0;bottom:-6px;height:6px;background:radial-gradient(circle at 5px -1px,transparent 5px,var(--paper) 5.5px) 0 0/10px 6px repeat-x}
 .t-head{display:flex;justify-content:space-between;font-size:11px;color:var(--red);letter-spacing:.1em}
@@ -76,7 +79,8 @@ button,a{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touc
 .ticket.at-shop .t-to,.ticket.at-shop .t-note{font-size:13px;line-height:1.4;color:#1d1a16}
 .ticket.at-shop .t-to::before,.ticket.at-shop .t-note::before{content:'';display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:1px}
 .ticket.at-shop .t-to::before{background:#e8d7a8;box-shadow:inset 0 0 0 2px #8c7a4a}
-.ticket.at-shop .t-note::before{background:var(--red)}
+.ticket.at-shop .t-note::before{display:none}
+.ticket.at-shop.far-offer .t-to::before{background:var(--red);box-shadow:none}
 .bowl{position:absolute;right:max(10px,env(safe-area-inset-right));top:max(52px,calc(env(safe-area-inset-top) + 46px));width:min(118px,26vw);text-align:center}
 .bowl svg{width:100%;display:block;filter:drop-shadow(0 3px 6px rgba(0,0,0,.35))}
 .bowl.tilt svg{animation:wob .5s ease-out}
@@ -86,7 +90,8 @@ button,a{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touc
 .say{position:absolute;left:50%;top:26%;transform:translateX(-50%);max-width:calc(100% - 32px);font-family:var(--hand);font-size:20px;line-height:1.35;color:var(--ink);background:var(--paper);padding:7px 14px;border-radius:2px;width:max-content;max-width:min(560px,calc(100% - 32px));text-align:center;box-shadow:0 3px 10px rgba(0,0,0,.3)}
 .say small{display:block;font-size:12px;color:var(--red)}
 .say.money{background:none;box-shadow:none;color:#fff;font-size:26px;text-shadow:0 2px 6px rgba(0,0,0,.7)}
-.edge-arrow{position:absolute;left:0;top:0;width:54px;height:54px;margin:-27px 0 0 -27px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+/* 方角だけの矢印: 画面の上（伝票と丼のあいだ）に固定（2026-11-03 本人「高さを表現すると分かりづらい。方角だけでいい」） */
+.edge-arrow{position:absolute;left:50%;top:max(10px,env(safe-area-inset-top));width:54px;height:54px;margin-left:-27px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(29,26,22,.45);border-radius:50%}
 .edge-arrow svg{width:30px;height:30px;fill:var(--red);stroke:#fff;stroke-width:1.6}
 .edge-arrow span{font-family:var(--hand);font-size:12px;color:#fff;text-shadow:0 1px 3px #000}
 .miss{position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;color:#fff;text-shadow:0 1px 4px #000;animation:fadeUp .8s ease-out forwards}

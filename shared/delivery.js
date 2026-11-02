@@ -1,12 +1,13 @@
-import { addTown } from './town.js?v=7'
+import { addTown } from './town.js?v=8'
 // 空中出前の仕事の中身（注文・崩れ・遅れ・受け渡し・投げ入れ・お金）。three.js に依存しない。画面と bot で同じものが動く
 // 固定ステップで stepShift を呼ぶ。runner（shared/runner.js）の状態を読むだけで、動きには触らない（投げた料理だけ自分で飛ばす）
 
 export const JOB = {
   shiftSec: 240,          // 勤務時間（4分）。この間は注文が途切れない（2026-11-02 本人「時間内なら無限に。どれだけ稼げるか」）
   shop: { x: 30, y: 0, z: 842, r: 7 },   // 店（広場の角の町中華）
-  // 受け取りの輪は2つ。手前＝近場、奥＝遠方（2026-11-02 本人「もうちょっと遠い場所の注文も欲しい」）。どっちの輪に入るかで選ぶ
-  pick: { near: { x: 29, z: 835.5, r: 5 }, far: { x: 29, z: 848.5, r: 5 } },
+  // 受け取りの輪は1つ（暖簾の前）。近場か遠方かは注文しだい（2026-11-03 本人「輪で選ぶのをやめて、ランダムで出てくるように」）
+  pick: { x: 29, z: 842, r: 5 },
+  farOdds: 0.3,           // 遠方の注文が出る割合（近場多め・遠方ときどき）。1件目は必ず近場
   nearD: [70, 240],       // 近場の届け先（店からの直線距離 m）
   farD: [280, 580],       // 遠方（運河の向こう・街の外れ・高層の上の階）
   // 崩れ（0〜100）。運んでいる間だけ増える
@@ -19,6 +20,7 @@ export const JOB = {
   landK: 1.1,
   bonk: 10,               // 壁にぶつかった
   pedHit: 7, carHit: 10,  // 通行人・車にぶつかった
+  crowHit: 6, ballHit: 9, // カラス・野球ボールに当たった（shared/air.js）
   climbK: 0.4,            // 壁を這っている間（毎秒）
   // 地上で運んだ時間だけ麺がのびる（2026-11-03 本人のワイヤー系の決まり「地面は不利に」。歩くだけが下手な飛び方と同じ稼ぎだった）
   soggyFree: 4,           // 着地して壁まで走る程度は見逃す（秒）
@@ -134,19 +136,17 @@ export function makeOrder(world, rnd, tier, avoid = [], first = false) {
   }
 }
 
-// 今出ている2つの注文（近場と遠方）を作り直す
+// 次の注文を1つ作る（近場が多め、遠方はときどき）
 function refreshOffers(sh, world) {
   const first = sh.results.length === 0
-  const recent = sh.targets.slice(-3)
-  const near = makeOrder(world, sh.rnd, 'near', recent, first)
-  const far = makeOrder(world, sh.rnd, 'far', recent.concat(near), first)
-  sh.offers = { near, far }
+  const tier = !first && sh.rnd() < JOB.farOdds ? 'far' : 'near'
+  sh.offer = makeOrder(world, sh.rnd, tier, sh.targets.slice(-3), first)
   sh.events.push({ t: 'offers' })
 }
 
 export function createShift(world, seed = 1) {
   const sh = {
-    t: 0, over: false, targets: [], idx: 0, cur: null, offers: null, rnd: mulberry(seed * 7919 + 13),
+    t: 0, over: false, targets: [], idx: 0, cur: null, offer: null, rnd: mulberry(seed * 7919 + 13),
     carrying: false, mess: 0, limit: 0, held: 0, pvx: 0, pvy: 0, pvz: 0, pgr: true,
     thrown: null, results: [], events: [], warned: false, fast: 0, near: false, src: { speed: 0, accel: 0, land: 0, bonk: 0, climb: 0, run: 0 }
   }
@@ -181,7 +181,7 @@ function finish(sh, how) {
   const practice = sh.idx === 0   // 1件目は練習: 崩れ・遅れでは怒られない（落とすのだけはだめ）
   const s = settle(o, sh.mess, late, how, practice, sh.soggy || 0)
   const early = how !== 'drop' && !s.angry && o.cust !== 'duf' && sh.limit - sh.held >= JOB.earlySec ? JOB.early : 0   // デュフフの人はきっかり 2,222円
-  const r = { idx: sh.idx, dish: o.dish.id, how, mess: Math.round(sh.mess), late: +late.toFixed(1), held: +sh.held.toFixed(1), limit: +sh.limit.toFixed(1), tip: s.tip + early, early, fee: how === 'drop' ? 0 : o.fee, bonus: how === 'drop' ? 0 : o.bonus, angry: s.angry, reason: s.reason, style: s.style, practice, soggy: +(sh.soggy || 0).toFixed(1), cust: o.cust, tier: o.tier, dist: Math.round(o.dist) }
+  const r = { idx: sh.idx, dish: o.dish.id, how, mess: Math.round(sh.mess), late: +late.toFixed(1), held: +sh.held.toFixed(1), limit: +sh.limit.toFixed(1), tip: s.tip + early, early, fee: how === 'drop' ? 0 : o.fee, bonus: how === 'drop' || s.angry ? 0 : o.bonus, angry: s.angry, reason: s.reason, style: s.style, practice, soggy: +(sh.soggy || 0).toFixed(1), cust: o.cust, tier: o.tier, dist: Math.round(o.dist) }
   sh.results.push(r)
   sh.events.push({ t: 'deliver', ...r, x: o.x, y: o.y, z: o.z })
   sh.carrying = false; sh.mess = 0; sh.held = 0; sh.thrown = null; sh.idx++; sh.near = false
@@ -194,18 +194,15 @@ export function stepShift(sh, r, dt, { throwNow = false } = {}) {
   if (sh.over) return
   sh.t += dt
   if (sh.t >= JOB.shiftSec) { sh.over = true; sh.events.push({ t: 'timeUp', carrying: sh.carrying }); return }
-  // 店で受け取る: 手前の輪＝近場、奥の輪＝遠方
-  if (!sh.carrying && !sh.thrown && sh.offers && r.y < 3) {
-    for (const tier of ['near', 'far']) {
-      const P = JOB.pick[tier]
-      if (Math.hypot(r.x - P.x, r.z - P.z) < P.r) {
-        const o = sh.offers[tier]
-        sh.cur = o; sh.targets.push(o); sh.carrying = true; sh.mess = 0; sh.held = 0; sh.warned = false; sh.near = false; sh.soggy = 0
-        sh.limit = o.limit + (sh.idx === 0 ? JOB.firstGrace : 0)
-        sh.offers = null
-        sh.events.push({ t: 'pickup', idx: sh.idx, tier, limit: sh.limit, cust: o.cust })
-        break
-      }
+  // 店の前の輪で受け取る
+  if (!sh.carrying && !sh.thrown && sh.offer && r.y < 3) {
+    const P = JOB.pick
+    if (Math.hypot(r.x - P.x, r.z - P.z) < P.r) {
+      const o = sh.offer
+      sh.cur = o; sh.targets.push(o); sh.carrying = true; sh.mess = 0; sh.held = 0; sh.warned = false; sh.near = false; sh.soggy = 0
+      sh.limit = o.limit + (sh.idx === 0 ? JOB.firstGrace : 0)
+      sh.offer = null
+      sh.events.push({ t: 'pickup', idx: sh.idx, tier: o.tier, limit: sh.limit, cust: o.cust })
     }
   }
   const o = curOrder(sh)
@@ -230,6 +227,8 @@ export function stepShift(sh, r, dt, { throwNow = false } = {}) {
       if (e.t === 'bonk') { add += JOB.bonk; S0.bonk += JOB.bonk }
       if (e.t === 'ped') { add += JOB.pedHit; S0.ped = (S0.ped || 0) + JOB.pedHit }
       if (e.t === 'car') { add += JOB.carHit; S0.car = (S0.car || 0) + JOB.carHit }
+      if (e.t === 'crow') { add += JOB.crowHit; S0.crow = (S0.crow || 0) + JOB.crowHit }
+      if (e.t === 'ball') { add += JOB.ballHit; S0.ball = (S0.ball || 0) + JOB.ballHit }
     }
     if (add > 0) {
       const before = sh.mess

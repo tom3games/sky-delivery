@@ -8,6 +8,8 @@ import { createRunner, stepRunner, RUN, rayHit } from './shared/runner.js'
 import { addTown } from './shared/town.js'
 import { createStreet, buildPoles } from './shared/street.js'
 import { JOB, createShift, stepShift, makeOrder, mulberry, settle, payData, money, earned, windowPool } from './shared/delivery.js'
+import { AIR, createAir, stepAir } from './shared/air.js'
+import { STREET } from './shared/street.js'
 const ROOT = import.meta.dirname
 mkdirSync(ROOT + '/shots', { recursive: true })
 const PORT = 5390
@@ -132,26 +134,34 @@ await t('通行人・車にぶつかると少しこぼれてよろける（空�
   Object.assign(r, { x: c.x, z: c.z, y: c.y, vx: 0, vz: 0, grounded: true, stun: 0 }); r.events.length = 0
   const carHit = st.collide(r)
   st.cd = 0; Object.assign(r, { x: c.x, z: c.z, y: c.y + 6 }); const air = st.collide(r)
-  const sh = createShift(world, 1); const r2 = createRunner({ id: 'b', spawn: { x: JOB.pick.near.x, y: 0, z: JOB.pick.near.z } }); stepShift(sh, r2, 1 / 60)
+  const sh = createShift(world, 1); const r2 = createRunner({ id: 'b', spawn: { x: JOB.pick.x, y: 0, z: JOB.pick.z } }); stepShift(sh, r2, 1 / 60)
   const m0 = sh.mess; r2.events = [{ t: 'ped' }]; stepShift(sh, r2, 1 / 60); const mPed = sh.mess - m0
   const m1 = sh.mess; r2.events = [{ t: 'car' }]; stepShift(sh, r2, 1 / 60); const mCar = sh.mess - m1
   expect(pedHit === 'ped' && carHit === 'car' && !air && mPed >= 5 && mCar >= 8 && mCar < JOB.angryMess, JSON.stringify({ pedHit, carHit, air, mPed, mCar })); return { mPed, mCar }
 })
 // 店の輪に立って受け取り、窓の前へ瞬間移動して手渡しする（node だけで1件まわす）
-function deliverOnce(sh, tier = 'near') {
-  const r = createRunner({ id: 'v', spawn: { x: JOB.pick[tier].x, y: 0, z: JOB.pick[tier].z } })
+const forceRnd = mulberry(77)
+function deliverOnce(sh, tier = null) {
+  if (tier && sh.offer && sh.offer.tier !== tier) sh.offer = makeOrder(world, forceRnd, tier)   // 検証用に近場・遠方を決める（本番はランダム）
+  const r = createRunner({ id: 'v', spawn: { x: JOB.pick.x, y: 0, z: JOB.pick.z } })
   stepShift(sh, r, 1 / 60); const o = sh.cur
   if (!o) return null
   Object.assign(r, { x: o.x + o.nx * 2, y: o.y - 1.1, z: o.z + o.nz * 2, vx: 0, vy: 0, vz: 0 }); r.events = []
   stepShift(sh, r, 1 / 60)
   return o
 }
-await t('注文は時間内なら途切れない: 30件続けて届けても次の2件（近場・遠方）が必ず出ている（2026-11-03 本人「時間内なら無限に」）', () => {
+await t('注文は時間内なら途切れない: 30件続けて届けても次の注文が必ず出ている（2026-11-03 本人「時間内なら無限に」）', () => {
   const sh = createShift(world, 4); const bad = []
-  for (let i = 0; i < 30; i++) { const o = deliverOnce(sh, i % 3 ? 'near' : 'far'); if (!o) bad.push('pick' + i); if (!sh.offers || !sh.offers.near || !sh.offers.far) bad.push('offers' + i) }
+  for (let i = 0; i < 30; i++) { const o = deliverOnce(sh); if (!o) bad.push('pick' + i); if (!sh.offer) bad.push('offer' + i) }
   expect(!bad.length && sh.results.length === 30 && !sh.over && sh.results.every(r => r.how === 'hand'), JSON.stringify({ bad, n: sh.results.length, over: sh.over })); return { delivered: sh.results.length }
 })
-await t('遠い注文: 手前の輪＝近場 70〜240m、奥の輪＝遠方 280〜580m。遠方は運河の向こう・高層の上の階・街の外れが出て、代金も時間も多い', () => {
+await t('注文はランダム（輪は1つ）: 1件目は必ず近場、2件目からは遠方が2〜4割（2026-11-03 本人「輪で選ぶのをやめてランダムに」）', () => {
+  const tiers = []; let firstNear = 0
+  for (let s = 1; s <= 60; s++) { const sh = createShift(world, s); if (sh.offer.tier === 'near') firstNear++; for (let i = 0; i < 8; i++) { deliverOnce(sh); tiers.push(sh.offer.tier) } }
+  const far = tiers.filter(x => x === 'far').length / tiers.length
+  expect(firstNear === 60 && far > 0.2 && far < 0.4 && JOB.pick.r >= 4 && !('near' in JOB.pick), JSON.stringify({ firstNear, far })); return { firstNear, far: Math.round(far * 100) + '%' }
+})
+await t('遠い注文: 近場 70〜240m、遠方 280〜580m。遠方は運河の向こう・高層の上の階・街の外れが出て、代金も時間も多い', () => {
   const rnd = mulberry(9), zones = {}, bad = []
   let nf = 0, ff = 0, nl = 0, fl = 0
   for (let i = 0; i < 400; i++) {
@@ -168,7 +178,7 @@ await t('遠い注文: 手前の輪＝近場 70〜240m、奥の輪＝遠方 280�
 await t('客の種類: デュフフの人はたまに（4〜10%）、ほか5種もそれぞれ出る。1件目は普通の客', () => {
   const rnd = mulberry(3), c = {}
   for (let i = 0; i < 4000; i++) { const o = makeOrder(world, rnd, i % 2 ? 'far' : 'near'); c[o.cust] = (c[o.cust] || 0) + 1 }
-  const firsts = Array.from({ length: 50 }, (_, s) => createShift(world, s + 1)).every(sh => sh.offers.near.cust === 'normal' && sh.offers.far.cust === 'normal')
+  const firsts = Array.from({ length: 50 }, (_, s) => createShift(world, s + 1)).every(sh => sh.offer.cust === 'normal')
   const p = k => (c[k] || 0) / 4000
   expect(p('duf') > 0.04 && p('duf') < 0.1 && ['polite', 'coins', 'photo', 'net'].every(k => p(k) > 0.07) && p('normal') > 0.4 && firsts, JSON.stringify({ c, firsts })); return { duf: +(p('duf') * 100).toFixed(1) + '%', ...c }
 })
@@ -190,7 +200,7 @@ await t('客ごとの払い方と怒り方（地上で運ぶと麺がのびて�
 })
 await t('網の人には窓から8m・少し速くても渡せる。普通の客は8mでは渡せない', () => {
   const sh = createShift(world, 2); deliverOnce(sh)   // 1件目（練習）を済ませる
-  const r = createRunner({ id: 'n', spawn: { x: JOB.pick.near.x, y: 0, z: JOB.pick.near.z } }); stepShift(sh, r, 1 / 60)
+  const r = createRunner({ id: 'n', spawn: { x: JOB.pick.x, y: 0, z: JOB.pick.z } }); stepShift(sh, r, 1 / 60)
   const o = sh.cur
   const at8 = c => { o.cust = c; o.handR = c === 'net' ? JOB.netR : JOB.handR; o.handSpeed = c === 'net' ? JOB.netSpeed : JOB.handSpeed; const n0 = sh.results.length; Object.assign(r, { x: o.x + o.nx * 8, y: o.y - 1.1, z: o.z + o.nz * 8, vx: 18 * o.nz, vy: 0, vz: -18 * o.nx, grounded: false }); r.events = []; stepShift(sh, r, 1 / 60); return sh.results.length > n0 }
   const normal = at8('normal'), net = at8('net')
@@ -200,7 +210,7 @@ await t('稼ぎの計算: 手取り = 基本給 + 配達手当 + 遠方手当 + 
   const sh = createShift(world, 6)
   deliverOnce(sh, 'near'); deliverOnce(sh, 'far'); deliverOnce(sh, 'far')
   const R = sh.results, want = JOB.wage * JOB.hours + R.reduce((a, r) => a + r.fee + r.bonus + r.tip - (r.angry ? JOB.claim : 0), 0)
-  const r = createRunner({ id: 'x', spawn: { x: JOB.pick.near.x, y: 0, z: JOB.pick.near.z } }); stepShift(sh, r, 1 / 60)
+  const r = createRunner({ id: 'x', spawn: { x: JOB.pick.x, y: 0, z: JOB.pick.z } }); stepShift(sh, r, 1 / 60)
   const during = money(sh)
   sh.t = JOB.shiftSec; stepShift(sh, r, 1 / 60)
   const after = money(sh), p = payData(sh)
@@ -208,7 +218,7 @@ await t('稼ぎの計算: 手取り = 基本給 + 配達手当 + 遠方手当 + 
 })
 await t('崩れ: 速く飛ぶ・強い着地は崩れる、ゆっくり歩くのは崩れない', () => {
   const sh = createShift(world, 1)
-  const r = createRunner({ id: 'a', spawn: { x: JOB.pick.near.x, y: 0, z: JOB.pick.near.z } })
+  const r = createRunner({ id: 'a', spawn: { x: JOB.pick.x, y: 0, z: JOB.pick.z } })
   stepShift(sh, r, 1 / 60); expect(sh.carrying, 'no pickup')
   r.vx = 3; for (let i = 0; i < 120; i++) { r.events.length = 0; stepShift(sh, r, 1 / 60) }
   const walk = sh.mess
@@ -218,17 +228,52 @@ await t('崩れ: 速く飛ぶ・強い着地は崩れる、ゆっくり歩くの
   const land = sh.mess - fly
   expect(walk === 0 && fly > 1 && land > 10, JSON.stringify({ walk, fly, land })); return { walk, fly: +fly.toFixed(1), land: +land.toFixed(1) }
 })
-await t('bot（16日ずつ）: 下手な人も平均3件以上で5,000円超え／歩くだけは下手な人の7割以下・上手い人の半分以下（地面は不利）／上手い人は遠方だけが近場だけより少し多い／下手な人が遠方を選んでも大損しない', () => {
-  const run = (env = {}) => execFileSync(process.execPath, ['tools/sim.mjs', '16', ...(env.k ? [env.k] : [])], { cwd: ROOT, encoding: 'utf8', timeout: 900000, env: { ...process.env, ...(env.pref ? { PREF: env.pref } : {}) } })
-  const out = run(), outN = run({ k: 'skilled', pref: 'near' }), outF = run({ k: 'skilled', pref: 'far' }), outCF = run({ k: 'clumsy', pref: 'far' })
+await t('bot（16日ずつ）: 下手な人も平均3件以上で5,000円超え／歩くだけは下手な人の7割以下・上手い人の半分以下（地面は不利）／カラスとボールで上手い人の稼ぎが1割以上落ちない（2026-11-03 本人「理不尽にならない頻度に」）', () => {
+  const run = (env = {}) => execFileSync(process.execPath, ['tools/sim.mjs', '16', ...(env.k ? [env.k] : [])], { cwd: ROOT, encoding: 'utf8', timeout: 900000, env: { ...process.env, ...(env.noair ? { NOAIR: '1' } : {}) } })
+  const out = run(), outN = run({ k: 'skilled', noair: true })
   const avg = (o, k) => +o.match(new RegExp(k + '\\s+平均 (\\d+)'))[1]
   const done = (o, k) => +o.match(new RegExp(k + '\\s+平均.*?届けた 平均([\\d.]+)件'))[1]
-  const r = { careful: avg(out, 'careful'), clumsy: avg(out, 'clumsy'), skilled: avg(out, 'skilled'), rush: avg(out, 'rush'), nearOnly: avg(outN, 'skilled'), farOnly: avg(outF, 'skilled'), clumsyFar: avg(outCF, 'clumsy'), clumsyDone: done(out, 'clumsy') }
+  const r = { careful: avg(out, 'careful'), clumsy: avg(out, 'clumsy'), skilled: avg(out, 'skilled'), rush: avg(out, 'rush'), skilledNoAir: avg(outN, 'skilled'), clumsyDone: done(out, 'clumsy') }
   expect(r.clumsyDone >= 3 && r.clumsy > 5000, '初めての人が稼げない ' + JSON.stringify(r))
-  expect(r.careful <= r.clumsy * 0.7 && r.careful <= Math.min(r.skilled, r.nearOnly, r.farOnly) * 0.5, '歩くだけが強すぎる ' + JSON.stringify(r))
-  expect(r.farOnly > r.nearOnly && r.farOnly < r.nearOnly * 1.25, '遠方だけが近場だけより少し多い、になっていない ' + JSON.stringify(r))
-  expect(r.clumsyFar > r.clumsy * 0.85, '下手な人が遠方を選ぶと大損 ' + JSON.stringify(r))
+  expect(r.careful <= r.clumsy * 0.7 && r.careful <= r.skilled * 0.5, '歩くだけが強すぎる ' + JSON.stringify(r))
+  expect(r.skilled >= r.skilledNoAir * 0.9, 'カラスとボールが理不尽 ' + JSON.stringify(r))
   return r
+})
+await t('交通量を増やした（2026-11-03 本人「車・通行人をもっと」）: 車 250台以上・通行人 60人', () => {
+  const st = createStreet(world, 1)
+  expect(st.traffic.cars.length >= 250 && st.peds.length === 60 && STREET.carGap < 340, JSON.stringify({ cars: st.traffic.cars.length, peds: st.peds.length })); return { cars: st.traffic.cars.length, peds: st.peds.length }
+})
+await t('カラス: 運んでいる時に当たると、はじかれて崩れる（カァ）。地面では群れもボールも来ない', () => {
+  const A = createAir(world, 3), sh = createShift(world, 1)
+  const r = createRunner({ id: 'c', spawn: { x: JOB.pick.x, y: 0, z: JOB.pick.z } }); stepShift(sh, r, 1 / 60)
+  for (let i = 0; i < 60 * 40; i++) { r.events = []; stepAir(A, r, 1 / 60) }
+  const groundSpawn = A.crows.filter(c => c.mode === 'fly').length + A.balls.length
+  Object.assign(r, { x: 0, y: 30, z: 700, vx: 12, vy: 0, vz: 0, grounded: false }); A.cd = 0
+  A.crows.push({ id: 999, x: 0.5, y: 31.1, z: 700, vx: 0, vy: 0, vz: 0, yaw: 0, mode: 'fly', t: 0, flap: 0 })
+  r.events = []; const v0 = r.vx; stepAir(A, r, 1 / 60); const ev = r.events.slice(); const m0 = sh.mess; stepShift(sh, r, 1 / 60)
+  const hit = ev.some(e => e.t === 'crow')
+  expect(groundSpawn === 0 && hit && r.vx < v0 && sh.mess - m0 >= JOB.crowHit && JOB.crowHit < 15, JSON.stringify({ groundSpawn, hit, v0, vx: r.vx, mess: sh.mess - m0 })); return { mess: +(sh.mess - m0).toFixed(1), vx: +r.vx.toFixed(1) }
+})
+await t('カラス: 電柱の上で休んでいて、近づくと飛び立つ。空中を飛んでいると群れが横切る（何秒か先の自分の位置）', () => {
+  const A = createAir(world, 5), r = createRunner({ id: 'p', spawn: { x: JOB.shop.x, y: 0, z: JOB.shop.z } })
+  stepAir(A, r, 1 / 60)
+  const perched = A.crows.filter(c => c.mode === 'perch').length
+  const c = A.crows.find(c => c.mode === 'perch')
+  Object.assign(r, { x: c.x + 5, y: c.y - 1, z: c.z, grounded: false }); r.events = []; stepAir(A, r, 1 / 60)
+  const scared = c.mode === 'takeoff' && A.events.some(e => e.t === 'scare')
+  const B = createAir(world, 6), q = createRunner({ id: 'f', spawn: { x: 0, y: 30, z: 700 } }); let flocks = 0, minD = 1e9
+  for (let i = 0; i < 60 * 40; i++) { Object.assign(q, { y: 30, vx: 0, vy: 0, vz: 20, grounded: false }); q.z += 20 / 60; q.events = []; B.cd = 9; stepAir(B, q, 1 / 60, true); flocks += B.events.filter(e => e.t === 'flock').length; B.events.length = 0; for (const k of B.crows) if (k.mode === 'fly') minD = Math.min(minD, Math.hypot(k.x - q.x, k.y - q.y - 1.1, k.z - q.z)) }
+  expect(perched >= 5 && scared && flocks >= 2 && minD < 3, JSON.stringify({ perched, scared, flocks, minD })); return { perched, flocks, minD: +minD.toFixed(1) }
+})
+await t('野球ボール: 打った瞬間に「危ない」の予告（落下点つき）、2秒以上あとに届く。止まっていると当たって崩れ、動けばよけられる', () => {
+  const mk = () => { const A = createAir(world, 8); A.nextFlock = 1e9; A.nextBall = 0; return A }
+  const A = mk(), r = createRunner({ id: 'b', spawn: { x: 0, y: 30, z: 700 } })
+  let warnAt = -1, hitAt = -1
+  for (let i = 0; i < 60 * 5 && hitAt < 0; i++) { Object.assign(r, { x: 0, y: 30, z: 700, vx: 0, vy: 0, vz: 0, grounded: false }); r.events = []; stepAir(A, r, 1 / 60); if (warnAt < 0 && A.events.some(e => e.t === 'ballWarn')) warnAt = i; if (A.events.some(e => e.t === 'ball')) hitAt = i; A.events.length = 0 }
+  const B = mk(), q = createRunner({ id: 'd', spawn: { x: 0, y: 30, z: 700 } }); let dodgedHit = false
+  for (let i = 0; i < 60 * 5; i++) { const z = i < 30 ? 700 : 700 + (i - 30) * 0.25; Object.assign(q, { x: 0, y: 30, z, vx: 0, vy: 0, vz: i < 30 ? 0 : 15, grounded: false }); q.events = []; stepAir(B, q, 1 / 60); if (B.events.some(e => e.t === 'ball')) dodgedHit = true; B.events.length = 0 }
+  const lead = (hitAt - warnAt) / 60
+  expect(warnAt >= 0 && hitAt > 0 && lead >= 2 && !dodgedHit && JOB.ballHit < 15, JSON.stringify({ warnAt, hitAt, lead, dodgedHit })); return { lead: +lead.toFixed(2), dodged: !dodgedHit }
 })
 await t('AI臭さチェック NG 0', () => {
   const out = execFileSync(process.execPath, [process.env.HOME + '/Desktop/claudecode/_shared/ai_tells.mjs', ROOT, '--json'], { encoding: 'utf8' })
@@ -259,13 +304,28 @@ await t('タイトルの後ろで CPU が飛んでいる', async () => {
   const moved = await p.evaluate(() => document.querySelector('#title').classList.contains('hidden') === false)
   expect(moved, 'title hidden')
 })
-await t('出勤: 伝票に近場と遠方の2つの注文が出る。手前の輪に入ると近場を受け取り、品名・届け先・残り時間が出る', async () => {
+await t('出勤: 伝票に次の注文（1件目は近場）が出る。店の前の輪に入ると受け取り、品名・届け先・残り時間が出る', async () => {
   await p.click('#btnStart')
   await p.evaluate(() => sky.dbg.pause(true)); await p.evaluate(() => sky.dbg.step(3))
-  const before = await p.evaluate(() => ({ carrying: sky.sh.carrying, to: document.getElementById('tTo').textContent, note: document.getElementById('tNote').textContent, earn: document.getElementById('tEarn').textContent }))
-  await p.evaluate(() => { sky.dbg.teleport(sky.JOB.pick.near.x, 0, sky.JOB.pick.near.z); sky.dbg.step(3) })
+  const before = await p.evaluate(() => ({ carrying: sky.sh.carrying, dish: document.getElementById('tDish').textContent, to: document.getElementById('tTo').textContent, note: document.getElementById('tNote').textContent, earn: document.getElementById('tEarn').textContent }))
+  await p.evaluate(() => { sky.dbg.teleport(sky.JOB.pick.x, 0, sky.JOB.pick.z); sky.dbg.step(3) })
   const r = await p.evaluate(() => ({ carrying: sky.sh.carrying, tier: sky.sh.cur && sky.sh.cur.tier, dish: document.getElementById('tDish').textContent, to: document.getElementById('tTo').textContent, time: document.getElementById('tTime').textContent, pick: sky.log.some(e => e.t === 'pickup') }))
-  expect(!before.carrying && /近場/.test(before.to) && /遠方/.test(before.note) && /稼ぎ/.test(before.earn) && r.carrying && r.tier === 'near' && r.pick && r.dish.length > 1 && /階/.test(r.to) && /秒/.test(r.time), JSON.stringify({ before, r })); return { before: before.to + ' / ' + before.note, to: r.to }
+  expect(!before.carrying && /近場/.test(before.to) && /次の注文/.test(before.dish) && /稼ぎ/.test(before.earn) && r.carrying && r.tier === 'near' && r.pick && r.dish.length > 1 && /階/.test(r.to) && /秒/.test(r.time), JSON.stringify({ before, r })); return { before: before.to + ' / ' + before.note, to: r.to }
+})
+await t('矢印は方角だけ（2026-11-03 本人「高さを表現すると分かりづらい。方角だけでいい」）: 画面の上（伝票と丼のあいだ）に固定・届け先が真上でも真下でも向きは水平の方角だけで決まる・正面0°/右90°/後ろ180°', async () => {
+  const r = await p.evaluate(() => {
+    const ar = document.getElementById('arrow'), svg = ar.querySelector('svg')
+    const ang = () => { const m = /rotate\(([-\d.e]+)rad\)/.exec(svg.style.transform); return m ? +m[1] : NaN }
+    const o = sky.sh.cur, y0 = o.y, me = sky.me, still = () => Object.assign(me, { vx: 0, vy: 0, vz: 0 })
+    still(); o.y = y0 + 150; sky.dbg.step(1); const hi = ang(), wantHi = sky.dbg.compass(o.x, o.z), rcHi = ar.getBoundingClientRect()
+    still(); o.y = -50; sky.dbg.step(1); const lo = ang(), want = sky.dbg.compass(o.x, o.z), rcLo = ar.getBoundingClientRect()
+    o.y = y0
+    const e = sky.camera.matrixWorld.elements, fx = -e[8], fz = -e[10], L = Math.hypot(fx, fz)
+    const ahead = sky.dbg.compass(me.x + fx / L * 30, me.z + fz / L * 30), right = sky.dbg.compass(me.x - fz / L * 30, me.z + fx / L * 30), back = sky.dbg.compass(me.x - fx / L * 30, me.z - fz / L * 30)
+    const tk = document.getElementById('ticket').getBoundingClientRect(), bw = document.getElementById('bowl').getBoundingClientRect()
+    return { hi: +hi.toFixed(3), lo: +lo.toFixed(3), want: +want.toFixed(3), wantHi: +wantHi.toFixed(3), sameSpot: Math.abs(rcHi.left - rcLo.left) < 1 && Math.abs(rcHi.top - rcLo.top) < 1, top: Math.round(rcHi.top), clear: rcHi.left >= tk.right - 2 && rcHi.right <= bw.left + 2, ahead: +ahead.toFixed(2), right: +(right * 180 / Math.PI).toFixed(0), back: +(Math.abs(back) * 180 / Math.PI).toFixed(0) }
+  })
+  expect(Math.abs(r.hi - r.lo) < 0.05 && Math.abs(r.hi - r.wantHi) < 0.03 && Math.abs(r.lo - r.want) < 0.03 && r.sameSpot && r.top < 80 && r.clear && Math.abs(r.ahead) < 0.02 && Math.abs(r.right - 90) <= 1 && Math.abs(r.back - 180) <= 1, JSON.stringify(r)); return r
 })
 await t('画面タッチ: 近くのビルに掛かる／遠すぎる所は、その向きの届く所に掛かるか×', async () => {
   const r = await p.evaluate(() => {
@@ -294,17 +354,18 @@ await t('手渡し: 窓の前でゆっくり寄ると届く。チップと客の
     const o = sky.sh.cur; sky.log.length = 0
     sky.dbg.teleport(o.x + o.nx * 2, o.y - 1.1, o.z + o.nz * 2); sky.dbg.step(2)
     const d = sky.log.find(e => e.t === 'deliver')
-    return { d, say: document.getElementById('say').textContent, idx: sky.sh.idx, offers: !!sky.sh.offers, stay: sky.dbg.target.visible, earn: document.getElementById('tEarn').textContent }
+    return { d, say: document.getElementById('say').textContent, idx: sky.sh.idx, offers: !!sky.sh.offer, stay: sky.dbg.target.visible, earn: document.getElementById('tEarn').textContent }
   })
   expect(r.d && r.d.how === 'hand' && !r.d.angry && r.d.tip > 0 && r.say.length > 3 && r.idx === 1 && r.offers && r.stay && /[1-9]/.test(r.earn), JSON.stringify(r)); return { tip: r.d.tip, say: r.say, earn: r.earn }
 })
 await t('店に戻らないと次を受け取れない／戻ると受け取る', async () => {
   const r = await p.evaluate(() => {
     const before = sky.sh.carrying
-    sky.dbg.teleport(sky.JOB.pick.far.x, 0, sky.JOB.pick.far.z); sky.dbg.step(2)
-    return { before, after: sky.sh.carrying, tier: sky.sh.cur && sky.sh.cur.tier, to: document.getElementById('tTo').textContent }
+    const want = sky.sh.offer && sky.sh.offer.tier
+    sky.dbg.teleport(sky.JOB.pick.x, 0, sky.JOB.pick.z); sky.dbg.step(2)
+    return { before, want, after: sky.sh.carrying, tier: sky.sh.cur && sky.sh.cur.tier, to: document.getElementById('tTo').textContent }
   })
-  expect(!r.before && r.after && r.tier === 'far' && /運河|高層|外れ|遠く/.test(r.to), JSON.stringify(r)); return r.to
+  expect(!r.before && r.after && r.tier === r.want && (r.tier !== 'far' || /運河|高層|外れ|遠く/.test(r.to)), JSON.stringify(r)); return r.to
 })
 await t('速すぎると受け取れない（止まって）', async () => {
   const r = await p.evaluate(() => {
@@ -322,7 +383,7 @@ await t('投げるボタンが無い・F キーでも投げない（2026-11-02 �
 })
 await t('デュフフの人: 窓の客がその人（眼鏡）になり、近づくと「デュフ」、渡すと台詞もデュフフで、チップは 2222/222/22 円のどれか', async () => {
   const r = await p.evaluate(() => {
-    if (!sky.sh.cur) { sky.dbg.teleport(sky.JOB.pick.near.x, 0, sky.JOB.pick.near.z); sky.dbg.step(2) }
+    if (!sky.sh.cur) { sky.dbg.teleport(sky.JOB.pick.x, 0, sky.JOB.pick.z); sky.dbg.step(2) }
     sky.log.length = 0
     sky.dbg.lookAtWindow('duf', 15); sky.dbg.step(1)
     const near = document.getElementById('say').textContent
@@ -337,7 +398,7 @@ await t('ほかの客も見た目と台詞が変わる（丁寧・小銭・撮�
   const out = {}
   for (const c of ['polite', 'coins', 'photo', 'net']) {
     out[c] = await p.evaluate(c => {
-      sky.dbg.teleport(sky.JOB.pick.near.x, 0, sky.JOB.pick.near.z); sky.dbg.step(2)
+      sky.dbg.teleport(sky.JOB.pick.x, 0, sky.JOB.pick.z); sky.dbg.step(2)
       sky.log.length = 0; sky.dbg.lookAtWindow(c, 15); sky.dbg.step(1)
       const near = document.getElementById('say').textContent, note = document.getElementById('tNote').textContent
       const o = sky.sh.cur; sky.dbg.teleport(o.x + o.nx * 2, o.y - 1.1, o.z + o.nz * 2); sky.dbg.step(2)
@@ -350,7 +411,7 @@ await t('ほかの客も見た目と台詞が変わる（丁寧・小銭・撮�
   expect(ok, JSON.stringify(out)); return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.say]))
 })
 await t('最後まで行くと給料明細が出る（件数が多い日も、画像の保存・Xのリンク）', async () => {
-  await p.evaluate(() => { for (let i = 0; i < 9; i++) { sky.dbg.teleport(sky.JOB.pick.near.x, 0, sky.JOB.pick.near.z); sky.dbg.step(2); const o = sky.sh.cur; sky.dbg.teleport(o.x + o.nx * 2, o.y - 1.1, o.z + o.nz * 2); sky.dbg.step(2) } })
+  await p.evaluate(() => { for (let i = 0; i < 9; i++) { sky.dbg.teleport(sky.JOB.pick.x, 0, sky.JOB.pick.z); sky.dbg.step(2); const o = sky.sh.cur; sky.dbg.teleport(o.x + o.nx * 2, o.y - 1.1, o.z + o.nz * 2); sky.dbg.step(2) } })
   await p.evaluate(() => { sky.dbg.step(60 * (sky.JOB.shiftSec + 5)) }); await p.evaluate(() => sky.dbg.pause(false)); await p.waitForTimeout(2500)
   const r = await p.evaluate(() => ({ mode: sky.mode, shown: !document.getElementById('result').classList.contains('hidden'), w: document.getElementById('slip').width, post: decodeURIComponent(document.getElementById('btnPost').href), net: window.__lastNet, n: sky.sh.results.length }))
   await p.screenshot({ path: ROOT + '/shots/result-many.png' })

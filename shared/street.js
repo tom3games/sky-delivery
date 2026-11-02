@@ -1,13 +1,14 @@
 // 通りの賑わい: 電柱と街灯（ワイヤーを掛けられる）・一般車・通行人。three.js に依存しない（画面と bot で同じものが動く）
 // 2026-11-02 本人「ワイヤーをもっと使わせたいから、なるべく地面にいたらダメみたいに。車と通行人を。ぶつかったらちょっとこぼれる。
 //   電柱とか、ワイヤーを引っ掛けられる場所を増やして」
-import { createTraffic, setTrafficSpeed } from './traffic.js?v=7'
+import { createTraffic, setTrafficSpeed } from './traffic.js?v=8'
 
 export const STREET = {
   poleGap: 26,          // 電柱・街灯の間隔（m）
   poleH: 10.5, lampH: 8,
   area: 330,            // 店からこの範囲だけに立てる（遠くは要らない）
-  peds: 36, pedRange: 150, pedWalk: 1.3,
+  peds: 60, pedRange: 150, pedWalk: 1.3,   // 36 から 60 に（2026-11-03 本人「交通量をもっと」）
+  carGap: 210,          // 車線 210m に1台（WIRE ESCAPE は 340m。同上）
   pedR: 0.9,            // 通行人に当たる距離
   carHalfW: 1.2, carHalfL: 2.6,
   hitCd: 1.2,           // 続けて当たらない間
@@ -65,7 +66,7 @@ export function buildPoles(world, center) {
 export function createStreet(world, seed = 1, center = { x: 30, z: 842 }) {
   buildPoles(world, center)
   setTrafficSpeed(STREET.trafficSpeed)
-  const traffic = createTraffic(world)
+  const traffic = createTraffic(world, STREET.carGap)
   const rnd = mul(seed * 7 + 3)
   // 歩道の線（道の両側、道幅の半分 + 2.2m）
   const walks = []

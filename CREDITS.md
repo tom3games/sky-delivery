@@ -40,3 +40,8 @@
 ## 人物（3D）
 - assets/chars/Ranger.glb, Rig_Medium_*.glb: KayKit Adventurers 2.0 / Kay Lousberg / CC0（色は塗り替え）
 - assets/chars/character-*.glb, aid-glasses.glb, Textures/colormap.png: Kenney Mini Characters / Kenney / CC0（窓の客。デュフフの人の眼鏡も）
+- snd/crow_1.mp3: Crow / fvcalderan / CC0（OpenGameArt crow。カラスの鳴き声）
+- snd/crow_2.mp3: Crow caw / zeroisnotnull / CC0（OpenGameArt crow-caw）
+- snd/wingflap.mp3: Dragon Flap / VishwaJai / CC0（OpenGameArt dragon-flap-0。カラスの羽ばたきに使う）
+- snd/bat_crack.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0（bfh1_wood_hit_01。バットの音の代わり）
+- snd/ball_hit.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0（bfh1_hit_01。ボールが当たったゴンッ）

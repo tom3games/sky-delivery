@@ -3,8 +3,8 @@
 //   rush:    ずっとワイヤーで全速力、近づいたら投げ入れる（速いが崩れる）
 //   skilled: ワイヤーで近くまで行き、最後は着地して壁を登って手渡し
 //   clumsy:  下手な人。skilled と同じ考えだが、反応が0.35秒遅れ、向きがぶれ、ワイヤーを掛け損ねる（3回に1回）
-import { JOB, curOrder } from './delivery.js?v=7'
-import { findAnchor } from './runner.js?v=7'
+import { JOB, curOrder } from './delivery.js?v=8'
+import { findAnchor } from './runner.js?v=8'
 
 const K = 130 / 80
 const XS = [-320, -240, -160, -80, 0, 80, 160, 240, 320].map(x => x * K)
@@ -55,26 +55,15 @@ function route(r, goal, world) {
   return pts
 }
 
-export function createBot(kind, seed = 1, pref) { let q = seed * 9301 + 49297; return { pref, rnd: () => ((q = (q * 9301 + 49297) % 233280) / 233280), lag: [], kind, plan: null, idx: 0, replan: 0, wT: 0, prevW: false, prevT: false, stuck: 0, lx: 0, lz: 0 } }
+export function createBot(kind, seed = 1) { let q = seed * 9301 + 49297; return { rnd: () => ((q = (q * 9301 + 49297) % 233280) / 233280), lag: [], kind, plan: null, idx: 0, replan: 0, wT: 0, prevW: false, prevT: false, stuck: 0, lx: 0, lz: 0 } }
 
-// どっちの注文を取るか。pref: near / far / smart（残り時間で決める）/ mix（交互）
-function choose(b, sh) {
-  const left = JOB.shiftSec - sh.t, f = sh.offers && sh.offers.far
-  const pref = b.pref || ({ careful: 'near', rush: 'far', skilled: 'smart', clumsy: 'near' })[b.kind] || 'near'
-  if (pref === 'far') return 'far'
-  if (pref === 'mix') return sh.results.length % 2 ? 'far' : 'near'
-  if (pref === 'smart') return f && left > f.dist / 7 + 25 ? 'far' : 'near'
-  return 'near'
-}
 
 export function botInput(b, r, sh, world, dt) {
   const o = curOrder(sh)
   const inp = { throttle: 0, steer: 0 }
-  if (sh.over || (!o && !sh.offers)) return inp
+  if (sh.over || (!o && !sh.offer)) return inp
   const toShop = !sh.carrying && !sh.thrown
-  if (toShop && !b.pick) b.pick = choose(b, sh)
-  if (!toShop) b.pick = null
-  const PK = toShop ? JOB.pick[b.pick] : null
+  const PK = toShop ? JOB.pick : null
   const goal = toShop ? { fx: PK.x - 4, fz: PK.z, x: PK.x, z: PK.z, y: 0 } : { fx: o.x + o.nx * 7, fz: o.z + o.nz * 7, x: o.x, z: o.z, y: o.y }
   b.replan -= dt
   if (!b.plan || b.goalKey !== goal.fx + ',' + goal.fz || b.replan <= 0) {
