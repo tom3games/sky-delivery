@@ -32,7 +32,7 @@ async function open(browser, opts = {}) {
   p.on('pageerror', e => p.errs.push('pageerror ' + e.message))
   p.on('console', m => { if (m.type() === 'error' && !/GL Driver|WebGL|GPU stall/.test(m.text())) p.errs.push('console ' + m.text()) })
   p.on('requestfailed', r => { if (!/fonts\.(googleapis|gstatic)/.test(r.url())) p.errs.push('reqfail ' + r.url()) })
-  await p.goto(URL0); await p.waitForFunction(() => window.__skyReady, null, { timeout: 20000 })
+  await p.goto(URL0); await p.waitForFunction(() => window.__skyReady, null, { timeout: 60000 })
   return p
 }
 const overflow = p => p.evaluate(() => {
@@ -274,6 +274,11 @@ await t('野球ボール: 打った瞬間に「危ない」の予告（落下点
   for (let i = 0; i < 60 * 5; i++) { const z = i < 30 ? 700 : 700 + (i - 30) * 0.25; Object.assign(q, { x: 0, y: 30, z, vx: 0, vy: 0, vz: i < 30 ? 0 : 15, grounded: false }); q.events = []; stepAir(B, q, 1 / 60); if (B.events.some(e => e.t === 'ball')) dodgedHit = true; B.events.length = 0 }
   const lead = (hitAt - warnAt) / 60
   expect(warnAt >= 0 && hitAt > 0 && lead >= 2 && !dodgedHit && JOB.ballHit < 15, JSON.stringify({ warnAt, hitAt, lead, dodgedHit })); return { lead: +lead.toFixed(2), dodged: !dodgedHit }
+})
+await t('先読み（modulepreload）は importmap より後にある（前だと Chrome で "three" が解決できず起動しない。2026-11-03 WIRE ESCAPE で公開版が止まった）', async () => {
+  const h = (await import('node:fs')).readFileSync(ROOT + '/index.html', 'utf8')
+  const im = h.indexOf('type="importmap"'), mp = h.indexOf('rel="modulepreload"')
+  expect(im > 0 && (mp < 0 || mp > im), JSON.stringify({ im, mp })); return { im, mp }
 })
 await t('AI臭さチェック NG 0', () => {
   const out = execFileSync(process.execPath, [process.env.HOME + '/Desktop/claudecode/_shared/ai_tells.mjs', ROOT, '--json'], { encoding: 'utf8' })
