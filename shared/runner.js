@@ -13,7 +13,7 @@
 // 座標は車と同じ（x=東西, z=南北, yaw=0 で +z を向く）。y は足の高さ。
 // 体力は dmg.body（車と同じ名前にして、警察と犯人の判定 chase.js をそのまま使う）
 
-import { GAME } from './config.js?v=12'
+import { GAME } from './config.js?v=13'
 
 export const RUN = {
   radius: 0.42, height: 1.75,
@@ -44,10 +44,11 @@ export const RUN = {
   zipExit: 7.5,                 // 巻き取りの終わりに前と上へ飛び出す速さ
   // 地面ワイヤー（2026-11-03 本人「空中に浮いてる間は地面にもワイヤーつけて加速できるように」「地面をちゃんとタップしなあかん感じに」）
   // 空中で画面の地面をタップした時だけ。掛けた点へ加速し、近くか通り過ぎたら外れて前と上へ跳ねる（スリングショット）
-  groundWireAcc: 30,            // 点へ向かう加速（m/s²）。直線で吸い込まない（瞬間移動にしない）
+  groundWireAcc: 48,            // 点へ向かう加速（m/s²）。30 では加速が分かりにくかった（2026-11-03 本人「あんまり加速できない」）
+  groundWireBoost: 9,           // 掛けた瞬間に点の向きへ足す速さ（最高速は超えない）
   groundWireRelease: 4,         // 点（胸から）がこれより近くなったら外れる（m）
   groundWireKick: 4,            // 外れた時に進む向き（水平）へ足す速さ
-  groundWireHop: 7,             // 外れた時の上向きの速さの下限
+  groundWireHop: 3.5,           // 空中で外れた時の上向きの速さの下限（前へ低い山なり。地面の近くや着地では跳ねない）
   groundWireMaxT: 3,            // これより長く掛けていたら外す（秒）
   maxSpeed: 38,
   releaseVyMax: 9,              // 外した瞬間の上向きの速さの上限（振るたびに空へ昇り続けないように）
@@ -339,7 +340,14 @@ export function stepRunner(r, inp, dt, world) {
       // 地面ワイヤー: 空中にいる時だけ、画面の地面をタップした所へ。地面に立っている・壁にいる・届かない・自分より上なら掛からない
       const w = inp.wireAt, d = Math.hypot(w.x - r.x, w.y - (r.y + 1.2), w.z - r.z)
       if (r.grounded || r.climbing || d > RUN.wireRange || w.y > r.y - 1) ev.push({ t: 'wireMiss', ground: true, far: d > RUN.wireRange, x: w.x, y: w.y, z: w.z, d })
-      else { r.rope = { x: w.x, y: w.y, z: w.z, len: d, t: 0, ground: true }; r.swings++; ev.push({ t: 'wire', ground: true, x: w.x, y: w.y, z: w.z, combo: r.combo }) }
+      else {
+        r.rope = { x: w.x, y: w.y, z: w.z, len: d, t: 0, ground: true }; r.swings++
+        // 掛けた瞬間にぐっと引かれる（点の向きへ足す。瞬間移動ではない）
+        const ux = (w.x - r.x) / d, uy = (w.y - (r.y + 1.2)) / d, uz = (w.z - r.z) / d
+        r.vx += ux * RUN.groundWireBoost; r.vy += uy * RUN.groundWireBoost; r.vz += uz * RUN.groundWireBoost
+        const v = Math.hypot(r.vx, r.vy, r.vz); if (v > RUN.maxSpeed) { const k = RUN.maxSpeed / v; r.vx *= k; r.vy *= k; r.vz *= k }
+        ev.push({ t: 'wire', ground: true, x: w.x, y: w.y, z: w.z, combo: r.combo })
+      }
     }
     else {
       r.sneaking = false
@@ -447,11 +455,17 @@ export function stepRunner(r, inp, dt, world) {
 }
 
 // 地面ワイヤーが外れる: 進む向きに少し足して上へ跳ねる。外す音と視野の演出は手で外した時と同じ（auto: false）
-export function groundRelease(r) {
+export function groundRelease(r, hop = true) {
   if (!r.rope) return
   const h = Math.hypot(r.vx, r.vz)
   if (h > 0.5) { r.vx += r.vx / h * RUN.groundWireKick; r.vz += r.vz / h * RUN.groundWireKick }
-  r.vy = Math.max(r.vy, RUN.groundWireHop)
+  if (hop) r.vy = Math.max(r.vy, RUN.groundWireHop)
+  else {
+    // 地面の近く: 跳ねずに着地する。下向きの勢いの半分を前へ回して、強く叩きつけない（着地の衝撃 6m/s 以下）
+    const lost = Math.max(0, -r.vy - 6), h2 = Math.hypot(r.vx, r.vz)
+    r.vy = Math.min(Math.max(r.vy, -6), 0)
+    if (h2 > 0.5 && lost > 0) { r.vx += r.vx / h2 * lost * 0.5; r.vz += r.vz / h2 * lost * 0.5 }
+  }
   r.rope = null; r.zipping = false
   r.events.push({ t: 'unwire', auto: false, ground: true })
 }
@@ -482,8 +496,9 @@ function physics(r, thr, dt, world, passive) {
     const rp = r.rope; rp.t += dt
     const dx = rp.x - r.x, dy = rp.y - (r.y + 1.2), dz = rp.z - r.z, d = Math.hypot(dx, dy, dz) || 1
     const toward = (r.vx * dx + r.vy * dy + r.vz * dz) / d
-    if (d < RUN.groundWireRelease || (toward < 0 && rp.t > 0.25) || rp.t > RUN.groundWireMaxT) groundRelease(r)
-    else if (r.y - floorAt(world, r.x, r.z, r.y).h < 0.8) groundRelease(r)   // 地面すれすれまで来たら着地せずに跳ねる
+    const above = r.y - floorAt(world, r.x, r.z, r.y).h
+    if (d < RUN.groundWireRelease || (toward < 0 && rp.t > 0.25) || rp.t > RUN.groundWireMaxT) groundRelease(r, above > 3)   // 地面から離れた空中で外れた時だけ前へ山なり（地面の近くでは跳ねない）
+    else if (above < 0.8) groundRelease(r, false)   // 地面すれすれ: 跳ねずにそのまま着地して走る（2026-11-03 本人「地面に着いてからバウンドするのはおかしい」）
     else { const a = RUN.groundWireAcc * dt; r.vx += dx / d * a; r.vy += dy / d * a + RUN.gravity * (RUN.ropeG || 1) * dt * 0.9; r.vz += dz / d * a }   // 重力はほぼ打ち消す（点へまっすぐ向かう）
   }
   // ワイヤー: 長さより遠くへは行けない（外へ向かう速さを消す）
@@ -591,7 +606,8 @@ function physics(r, thr, dt, world, passive) {
     r.y = f.h; r.vy = 0; r.grounded = true; r.airTime = 0
   }
   // 地面を走っている間はワイヤーを持たない（張っていないワイヤーで引きずらない）
-  if (r.grounded && r.rope && r.rope.t > 0.3) release(r, false)
+  if (r.grounded && r.rope && r.rope.ground) groundRelease(r, false)   // 地面ワイヤーのまま着地: 跳ねない
+  else if (r.grounded && r.rope && r.rope.t > 0.3) release(r, false)
   r.groundY = f.h
   if (r.y > (r.maxY || 0)) r.maxY = r.y
   r.roofTime = r.onRoof && r.grounded ? r.roofTime + dt : 0

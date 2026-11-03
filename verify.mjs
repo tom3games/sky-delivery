@@ -280,7 +280,7 @@ await t('先読み（modulepreload）は importmap より後にある（前だ�
   const im = h.indexOf('type="importmap"'), mp = h.indexOf('rel="modulepreload"')
   expect(im > 0 && (mp < 0 || mp > im), JSON.stringify({ im, mp })); return { im, mp }
 })
-await t('地面ワイヤー（2026-11-03 本人「空中に浮いてる間は地面にもワイヤーつけて加速」「地面をちゃんとタップしなあかん感じに」）: 地面に立っている時は地面に掛からない／空中では掛かって点へ加速し、近く（4m）で外れて上へ跳ねる／1ステップで最高速×dt より動かない（瞬間移動しない）／ワイヤーボタン（狙いなし）では空中でも地面に掛からない', () => {
+await t('地面ワイヤー（2026-11-03 本人「空中に浮いてる間は地面にもワイヤーつけて加速」「地面をちゃんとタップしなあかん感じに」）: 地面に立っている時は地面に掛からない／空中では掛かってすぐ速くなり（0.3秒で25m/s）、近く（4m）で外れる。地面の近くで外れても着地しても跳ね返らない／1ステップで最高速×dt より動かない（瞬間移動しない）／ワイヤーボタン（狙いなし）では空中でも地面に掛からない', () => {
   const DT = 1 / 60
   const findOpen = () => { for (let x = -200; x <= 200; x += 7) for (let z = 300; z <= 1200; z += 7) { if (world.surfaceAt(x, z) !== 'road') continue; const g = world.groundAt(x, z, 50).h; if (Math.abs(g) > 0.5) continue; let ok = true; for (let k = 0; k <= 40 && ok; k += 4) { const zz = z + k; if (world.surfaceAt(x, zz) !== 'road' || Math.abs(world.groundAt(x, zz, 50).h) > 0.5) ok = false } if (ok) return { x, z } } return null }
   const P = findOpen(), out = {}
@@ -294,13 +294,19 @@ await t('地面ワイヤー（2026-11-03 本人「空中に浮いてる間は地
   Object.assign(b, { grounded: false, vx: 0, vy: 0, vz: 10 })
   stepRunner(b, { wire: true, wireAt: { x: P.x, y: 0, z: P.z + 30, ground: true } }, DT, world)
   out.hooked = !!(b.rope && b.rope.ground)
-  let maxV = 0, maxStep = 0, released = -1, relD = null, relVy = null, px = b.x, py = b.y, pz = b.z
-  for (let i = 1; i < 60 * 4 && released < 0; i++) {
+  let maxV = 0, maxStep = 0, released = -1, relD = null, relVy = null, relY = null, t25 = null, upAfter = 0, landed = false, vyAfterLand = -99, px = b.x, py = b.y, pz = b.z
+  for (let i = 1; i < 60 * 4; i++) {
     stepRunner(b, {}, DT, world)
     if (b.rope) maxStep = Math.max(maxStep, Math.hypot(b.x - px, b.y - py, b.z - pz)); px = b.x; py = b.y; pz = b.z
-    maxV = Math.max(maxV, Math.hypot(b.vx, b.vy, b.vz))
-    if (!b.rope) { released = i; relD = +Math.hypot(P.x - b.x, 0 - (b.y + 1.2), P.z + 30 - b.z).toFixed(1); relVy = +b.vy.toFixed(1) }
+    const v = Math.hypot(b.vx, b.vy, b.vz)
+    if (b.rope) maxV = Math.max(maxV, v)
+    if (t25 === null && v >= 25) t25 = i * DT
+    if (!b.rope && released < 0) { released = i; relD = +Math.hypot(P.x - b.x, 0 - (b.y + 1.2), P.z + 30 - b.z).toFixed(1); relVy = +b.vy.toFixed(1); relY = b.y }
+    if (released > 0) upAfter = Math.max(upAfter, b.y - relY)
+    if (b.grounded) landed = true
+    if (landed) vyAfterLand = Math.max(vyAfterLand, b.vy)
   }
+  out.t25 = t25 && +t25.toFixed(2); out.upAfter = +upAfter.toFixed(2); out.landed = landed; out.vyAfterLand = +vyAfterLand.toFixed(2)
   out.released = released > 0; out.relD = relD; out.relVy = relVy; out.maxV = +maxV.toFixed(1); out.maxStep = +maxStep.toFixed(2); out.stepLimit = +(RUN.maxSpeed * DT * 1.05).toFixed(2)
   out.unwire = b.events.length >= 0
   // 3) ワイヤーボタン（狙いなし）を空中で押しても地面には掛からない
@@ -308,7 +314,8 @@ await t('地面ワイヤー（2026-11-03 本人「空中に浮いてる間は地
   Object.assign(c, { grounded: false, vx: 0, vy: 0, vz: 10 })
   stepRunner(c, { wire: true }, DT, world)
   out.buttonNotGround = !(c.rope && c.rope.ground)
-  expect(out.groundBlocked && out.hooked && out.released && relD <= RUN.groundWireRelease + 1.5 && relVy >= RUN.groundWireHop - 0.5 && maxV <= RUN.maxSpeed + 1 && maxStep <= out.stepLimit && out.buttonNotGround, JSON.stringify(out))
+  // 2026-11-03 本人「あんまり加速できない」「地面に着いてからバウンドするのはおかしい」: 0.3秒で 25m/s・掛けている間に 30m/s 以上（速さの線が出る）、地面の近くで外れても着地しても上へ跳ね返らない
+  expect(out.groundBlocked && out.hooked && out.released && relD <= RUN.groundWireRelease + 1.5 && maxV >= 30 && maxV <= RUN.maxSpeed + 1 && out.t25 !== null && out.t25 <= 0.3 && out.upAfter <= 0.05 && out.landed && out.vyAfterLand <= 0.01 && maxStep <= out.stepLimit && out.buttonNotGround, JSON.stringify(out))
   return out
 })
 await t('AI臭さチェック NG 0', () => {
