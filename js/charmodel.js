@@ -3,8 +3,8 @@
 // 窓の客: Kenney Mini Characters（CC0、現代の普段着）。待機アニメの上で右腕を振る
 // 読み込みが終わる前と失敗した時は、前の手続きの人形（runnermodel.js）を使う
 import * as THREE from 'three'
-import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js?v=13'
-import { clone as skClone } from '../vendor/jsm/utils/SkeletonUtils.js?v=13'
+import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js?v=14'
+import { clone as skClone } from '../vendor/jsm/utils/SkeletonUtils.js?v=14'
 
 const BASE = 'assets/chars/'
 const A = { ready: false, failed: false, ranger: null, clips: {}, custs: {}, glasses: null }

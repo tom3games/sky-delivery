@@ -3,7 +3,7 @@
 // sky-delivery 版だけ「出前の記録」（d.log）を足してある（2026-11-02。正本には未反映）。型は2本で同じ、色だけ仕事ごとに変える。
 //
 // 使い方:
-//   import { drawPayslip, PAYSLIP_W, PAYSLIP_H } from './payslip.js?v=13'
+//   import { drawPayslip, PAYSLIP_W, PAYSLIP_H } from './payslip.js?v=14'
 //   const c = drawPayslip(canvasOrNull, {
 //     lang: 'ja', no: 1, job: '居酒屋ホール', date: '2026.11.01',
 //     wage: 1100, hours: 6,                       // 基本給 = 時給 × 時間

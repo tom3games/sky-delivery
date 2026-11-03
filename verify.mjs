@@ -589,18 +589,25 @@ await t('WebKit: タップで出勤してスマホ操作が出る・実際には
   const r = await wp.evaluate(() => ({ mode: sky.mode, touch: !document.getElementById('touch').classList.contains('hidden'), mute: window.__muteOk(), calls: window.__soundCalls }))
   expect(r.mode === 'play' && r.touch && r.mute, JSON.stringify(r)); return r
 })
-await t('WebKit: スティックで走る', async () => {
-  const box = await wp.locator('#stick').boundingBox()
-  const x0 = await wp.evaluate(() => [sky.me.x, sky.me.z])
-  await wp.evaluate(({ x, y }) => {
-    const el = document.getElementById('stick')
-    const ev = (type, cx, cy) => el.dispatchEvent(new PointerEvent(type, { pointerId: 7, clientX: cx, clientY: cy, bubbles: true, pointerType: 'touch' }))
-    ev('pointerdown', x, y); ev('pointermove', x, y - 50)
-  }, { x: box.x + box.width / 2, y: box.y + box.height / 2 })
-  await wp.waitForTimeout(1200)
-  const x1 = await wp.evaluate(() => [sky.me.x, sky.me.z])
-  const d = Math.hypot(x1[0] - x0[0], x1[1] - x0[1])
-  expect(d > 3, d); return { moved: +d.toFixed(1) }
+await t('WebKit: 左スティックは左下に固定（2026-11-03 本人「左スティックは固定で」）: 別の所を触っても出てこない・動かない／円に触れて倒すと走る／画面をなぞった指が円に入るとその時点から倒した扱い', async () => {
+  const r = await wp.evaluate(async () => {
+    const el = document.getElementById('stick'), cv = document.querySelector('#view canvas'), c0 = window.__stickCenter()
+    const ev = (tg, type, id, cx, cy) => tg.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: cx, clientY: cy, bubbles: true, pointerType: 'touch' }))
+    // 1) 左の広い所（円の外）を触る: スティックは出ない・動かない
+    const fx = c0.x + c0.R * 2.2, fy = c0.y - c0.R * 2.2
+    ev(cv, 'pointerdown', 11, fx, fy); const away = { held: el.classList.contains('held'), moved: Math.hypot(window.__stickCenter().x - c0.x, window.__stickCenter().y - c0.y) }; ev(window, 'pointerup', 11, fx, fy)
+    // 2) 円の中を触って上へ倒す
+    const p0 = [sky.me.x, sky.me.z]
+    ev(el, 'pointerdown', 12, c0.x, c0.y); ev(window, 'pointermove', 12, c0.x, c0.y - 50)
+    await new Promise(r => setTimeout(r, 1200))
+    const d = Math.hypot(sky.me.x - p0[0], sky.me.z - p0[1]), c1 = window.__stickCenter()
+    ev(window, 'pointerup', 12, c0.x, c0.y - 50)
+    // 3) 外から指をすべらせて入る
+    ev(cv, 'pointerdown', 13, c0.x + c0.R * 2.5, c0.y); for (let k = 2.4; k >= 0.3; k -= 0.3) ev(window, 'pointermove', 13, c0.x + c0.R * k, c0.y)
+    const slid = el.classList.contains('held'); ev(window, 'pointerup', 13, c0.x, c0.y)
+    return { away, moved: +d.toFixed(1), fixed: Math.hypot(c1.x - c0.x, c1.y - c0.y) < 1, slid, released: !el.classList.contains('held'), left: Math.round(c0.x), fromBottom: Math.round(innerHeight - c0.y) }
+  })
+  expect(!r.away.held && r.away.moved < 1 && r.moved > 3 && r.fixed && r.slid && r.released, JSON.stringify(r)); return r
 })
 await t('WebKit: 巻き取りボタンが無い・大きいワイヤーボタンで前の上へ掛かる（WIRE ESCAPE と同じ並び）', async () => {
   const r = await wp.evaluate(async () => {

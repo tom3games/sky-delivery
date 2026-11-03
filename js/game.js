@@ -1,25 +1,25 @@
 // 空中出前 宙吊軒（1日だけ職場体験 #4）。WIRE ESCAPE のワイヤーと街を使った出前ゲーム
 // 速く飛ぶと料理が崩れて怒られる、ゆっくりだと遅れて怒られる
 import * as THREE from 'three'
-import { GAME } from '../shared/config.js?v=13'
-import { createWorld } from '../shared/track.js?v=13'
-import { buildScene } from './scene.js?v=13'
-import { FX } from './fx.js?v=13'
-import { loadSky, setAniso } from './look.js?v=13'
-import { Q } from './quality.js?v=13'
-import { RunnerModel } from './runnermodel.js?v=13'
-import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=13'
-import { createRunner, stepRunner, findAnchor, rayHit, floorAt, RUN } from '../shared/runner.js?v=13'
-import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=13'
-import { createBot, botInput } from '../shared/bot.js?v=13'
-import { drawPayslip, totals } from './payslip.js?v=13'
-import { createStreet, buildPoles } from '../shared/street.js?v=13'
-import { addTown, clearShopFront } from '../shared/town.js?v=13'
-import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=13'
-import { carLights } from './carmodel.js?v=13'
-import { LOW } from './quality.js?v=13'
-import { createAir, stepAir } from '../shared/air.js?v=13'
-import { airPool } from './air3d.js?v=13'
+import { GAME } from '../shared/config.js?v=14'
+import { createWorld } from '../shared/track.js?v=14'
+import { buildScene } from './scene.js?v=14'
+import { FX } from './fx.js?v=14'
+import { loadSky, setAniso } from './look.js?v=14'
+import { Q } from './quality.js?v=14'
+import { RunnerModel } from './runnermodel.js?v=14'
+import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=14'
+import { createRunner, stepRunner, findAnchor, rayHit, floorAt, RUN } from '../shared/runner.js?v=14'
+import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=14'
+import { createBot, botInput } from '../shared/bot.js?v=14'
+import { drawPayslip, totals } from './payslip.js?v=14'
+import { createStreet, buildPoles } from '../shared/street.js?v=14'
+import { addTown, clearShopFront } from '../shared/town.js?v=14'
+import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=14'
+import { carLights } from './carmodel.js?v=14'
+import { LOW } from './quality.js?v=14'
+import { createAir, stepAir } from '../shared/air.js?v=14'
+import { airPool } from './air3d.js?v=14'
 
 const $ = id => document.getElementById(id)
 // ---------------------------------------------------------------- 読み込みの進み具合（ロード画面）
@@ -437,24 +437,27 @@ function groundRay(o, d, maxT) {
 // スティックとボタン
 const stick = { x: 0, y: 0, id: null }
 {
-  // 左の広い範囲のどこを触ってもスティックが出る（WIRE ESCAPE と同じ）
-  const zone = $('stickZone'), el = $('stick'), knob = el.querySelector('.knob')
-  let ox = 0, oy = 0
-  const R = () => el.getBoundingClientRect().width / 2
+  // 左スティックは左下に固定（2026-11-03 本人「左スティックは固定で」）。触った所へ動かない。円の少し外（約1.4倍）から触っても、
+  // 画面をなぞっていた指がすべって入ってきても（その時点から）倒した扱いにする
+  const el = $('stick'), knob = el.querySelector('.knob')
+  const ctr = () => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, R: r.width / 2 } }
   const upd = e => {
-    let dx = (e.clientX - ox) / R(), dy = (e.clientY - oy) / R()
+    const c = ctr()
+    let dx = (e.clientX - c.x) / c.R, dy = (e.clientY - c.y) / c.R
     const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l }
     stick.x = dx; stick.y = dy; knob.style.transform = `translate(${dx * 36}px,${dy * 36}px)`
   }
-  zone.addEventListener('pointerdown', e => {
-    Snd.init(); if (stick.id != null) return
-    stick.id = e.pointerId; try { zone.setPointerCapture(e.pointerId) } catch (er) {}
-    const zr = zone.getBoundingClientRect(); ox = e.clientX; oy = e.clientY
-    el.style.left = (ox - zr.left) + 'px'; el.style.top = (oy - zr.top) + 'px'; el.classList.add('held'); upd(e)
-  })
-  zone.addEventListener('pointermove', e => { if (e.pointerId === stick.id) upd(e) })
-  const end = e => { if (e.pointerId !== stick.id) return; stick.id = null; stick.x = stick.y = 0; knob.style.transform = ''; el.classList.remove('held'); el.style.left = el.style.top = '' }
-  zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end)
+  const grab = e => { stick.id = e.pointerId; el.classList.add('held'); upd(e) }
+  el.addEventListener('pointerdown', e => { Snd.init(); if (stick.id != null) return; e.preventDefault(); e.stopPropagation(); grab(e) })
+  addEventListener('pointermove', e => {
+    if (e.pointerId === stick.id) { upd(e); return }
+    if (stick.id == null && gest.has(e.pointerId)) {   // 画面をなぞっていた指がスティックの円に入った
+      const c = ctr(); if (Math.hypot(e.clientX - c.x, e.clientY - c.y) < c.R) { gest.delete(e.pointerId); grab(e) }
+    }
+  }, true)
+  const end = e => { if (e.pointerId !== stick.id) return; stick.id = null; stick.x = stick.y = 0; knob.style.transform = ''; el.classList.remove('held') }
+  addEventListener('pointerup', end, true); addEventListener('pointercancel', end, true)
+  window.__stickCenter = () => ctr()
   for (const b of document.querySelectorAll('.tbtn')) b.addEventListener('pointerdown', e => {
     e.preventDefault(); Snd.init()
     const k = b.dataset.k
