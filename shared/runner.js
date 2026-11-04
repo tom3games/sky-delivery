@@ -13,7 +13,7 @@
 // 座標は車と同じ（x=東西, z=南北, yaw=0 で +z を向く）。y は足の高さ。
 // 体力は dmg.body（車と同じ名前にして、警察と犯人の判定 chase.js をそのまま使う）
 
-import { GAME } from './config.js?v=14'
+import { GAME } from './config.js?v=15'
 
 export const RUN = {
   radius: 0.42, height: 1.75,
@@ -50,6 +50,12 @@ export const RUN = {
   groundWireKick: 4,            // 外れた時に進む向き（水平）へ足す速さ
   groundWireHop: 3.5,           // 空中で外れた時の上向きの速さの下限（前へ低い山なり。地面の近くや着地では跳ねない）
   groundWireMaxT: 3,            // これより長く掛けていたら外す（秒）
+  // 低い物へのワイヤー。2026-11-04 店の周りを埋めた時に、低い点（電柱・一軒家）へ遠くから掛けると1フレームで 25m 飛ぶ（ロープを短くして位置を押し込む）のを見つけた
+  lowAnchor: 16,                // 足元からこの高さより低い点は、ロープをこの速さで縮めて寄せる（瞬間移動しない）
+  lowPull: 30,                  // （m/s）
+  lowPenalty: 1.2,              // ワイヤーボタンの自動の狙いで、低い物より高いビルを選ぶ（店の周りの低い物で振りが小さくならないように。何も無ければ低い物に掛かる）
+  lowHop: 8.5,                  // 自動販売機（low）に掛けて外れた時の上向きの速さ。機械を跳び越す
+  lowExit: 12,                  // そのときの水平の速さの上限。機械の後ろの家に勢いでぶつからない（ぶつかると 14m/s 超で崩れる）
   maxSpeed: 38,
   releaseVyMax: 9,              // 外した瞬間の上向きの速さの上限（振るたびに空へ昇り続けないように）
   drag: 0.012,
@@ -112,7 +118,11 @@ export function floorAt(world, x, z, y) {
   for (const o of solids(world, x, z)) {
     if (o.y1 > y + 0.6 || o.y1 <= h) continue
     const p = local(o, x, z)
-    if (Math.abs(p.u) <= o.hw + 0.15 && Math.abs(p.v) <= o.hl + 0.15) { h = o.y1; roof = o }
+    if (Math.abs(p.u) <= o.hw + 0.15 && Math.abs(p.v) <= o.hl + 0.15) {
+      // 切妻屋根（一軒家）: 棟へ向かって床が上がる。乗っても屋根に埋まらない
+      const top = o.gable ? o.y1 + o.gable * Math.max(0, 1 - (o.ridgeX ? Math.abs(p.v) / o.hl : Math.abs(p.u) / o.hw)) : o.y1
+      if (top <= y + 0.6) { h = Math.max(h, top); roof = o }
+    }
   }
   return { h, roof }
 }
@@ -123,7 +133,7 @@ function rayBox(o, ox, oy, oz, dx, dy, dz, len) {
   const px = (ox - o.cx) * c - (oz - o.cz) * s, pz = (ox - o.cx) * s + (oz - o.cz) * c
   const qx = dx * c - dz * s, qz = dx * s + dz * c
   let t0 = 0, t1 = len
-  for (const [p, d, lo, hi] of [[px, qx, -o.hw, o.hw], [oy, dy, o.y0, o.y1], [pz, qz, -o.hl, o.hl]]) {
+  for (const [p, d, lo, hi] of [[px, qx, -o.hw, o.hw], [oy, dy, o.y0, o.y1 + (o.gable || 0)], [pz, qz, -o.hl, o.hl]]) {
     if (Math.abs(d) < 1e-9) { if (p < lo || p > hi) return -1; continue }
     let a = (lo - p) / d, b = (hi - p) / d
     if (a > b) { const tmp = a; a = b; b = tmp }
@@ -141,7 +151,8 @@ function anchorBoxes(world) {
 }
 
 // 画面をタッチ・クリックした向きの線が最初に当たる建物の点（ワイヤーの狙い）。当たらなければ null
-export function rayHit(world, ox, oy, oz, dx, dy, dz, len = 400) {
+// minT: 画面のタップはカメラから線を出す。自分より手前（カメラと自分の間）の電柱に吸われないように、この距離より近い電柱は見ない
+export function rayHit(world, ox, oy, oz, dx, dy, dz, len = 400, minT = 0) {
   let best = -1
   for (const o of anchorBoxes(world)) {
     const t = rayBox(o, ox, oy, oz, dx, dy, dz, len)
@@ -152,9 +163,10 @@ export function rayHit(world, ox, oy, oz, dx, dy, dz, len = 400) {
   if (world.poles) for (const q of world.poles) {
     const tx = q.x - ox, tz = q.z - oz, ty = q.y1 - 0.4 - oy
     const t = tx * dx + ty * dy + tz * dz
-    if (t <= 0 || t > len || (best > 0 && t > best)) continue
+    if (t <= minT || t > len || (best > 0 && t > best)) continue
     const ex = ox + dx * t - q.x, ey = oy + dy * t - (q.y1 - 0.4), ez = oz + dz * t - q.z
-    if (ex * ex + ez * ez < 6.25 && ey > -(q.y1 - q.y0) * 0.6 && ey < 2.5) { best = t; hit = { x: q.x, y: q.y1 - 0.4, z: q.z, pole: true } }
+    // 自動販売機（low）は線の近く 1.5m・機械の高さのあたりだけ（すぐ上の壁を狙ったタップを奪わない）
+    if (ex * ex + ez * ez < (q.low ? 2.25 : 6.25) && ey > -(q.y1 - q.y0) * 0.6 && ey < (q.low ? 1 : 2.5)) { best = t; hit = { x: q.x, y: q.y1 - 0.4, z: q.z, pole: true, low: !!q.low } }
   }
   return hit
 }
@@ -200,7 +212,7 @@ export function findAnchor(world, r, dirYaw = null) {
       const horiz = tHit * Math.cos(p)
       if (ay < oy + RUN.wireMinUp || horiz < 5) continue
       // 点数: 正面ほど・55度前後ほど・ほどよい長さ（18〜40m）ほど良い。遠すぎるとワイヤーが張らず振れない
-      const s = -Math.abs(yo) * 0.012 - Math.abs(pd - 56) * 0.04 - Math.abs(tHit - 28) * 0.05 - (tHit > 55 ? (tHit - 55) * 0.1 : 0)
+      const s = -Math.abs(yo) * 0.012 - Math.abs(pd - 56) * 0.04 - Math.abs(tHit - 28) * 0.05 - (tHit > 55 ? (tHit - 55) * 0.1 : 0) - (ay < RUN.lowAnchor ? RUN.lowPenalty : 0)
       if (s > bs) { bs = s; best = { x: ox + dx * tHit, y: ay, z: oz + dz * tHit, len: tHit } }
     }
   }
@@ -214,7 +226,7 @@ export function findAnchor(world, r, dirYaw = null) {
       if (Math.abs(yo) > 84) continue
       const len = Math.hypot(horiz, ay - oy), pd = Math.atan2(ay - oy, horiz) * 180 / Math.PI
       if (len > RUN.wireRange) continue
-      const s = -Math.abs(yo) * 0.012 - Math.abs(pd - 56) * 0.04 - Math.abs(len - 28) * 0.05 + 0.15
+      const s = -Math.abs(yo) * 0.012 - Math.abs(pd - 56) * 0.04 - Math.abs(len - 28) * 0.05 + 0.15 - (ay < RUN.lowAnchor && q.town ? RUN.lowPenalty : 0)
       if (s > bs) { bs = s; best = { x: q.x, y: ay, z: q.z, len, pole: true } }
     }
   }
@@ -336,6 +348,19 @@ export function stepRunner(r, inp, dt, world) {
   // ワイヤー: 押すたびに 掛ける / 外す
   if (wirePress && r.stun <= 0) {
     if (r.rope) release(r, true)
+    else if (inp.wireAt && inp.wireAt.low) {
+      // 自動販売機（2026-11-04）: 低くて振り子にならないので、地面ワイヤーと同じく点へ引かれて、近くで外れて跳び越す。地面からでも掛かる（ワイヤーボタンの自動の狙いには入らない）
+      const w = inp.wireAt, d = Math.hypot(w.x - r.x, w.y - (r.y + 1.2), w.z - r.z) || 1
+      if (d > RUN.wireRange) ev.push({ t: 'wireMiss', far: true, x: w.x, y: w.y, z: w.z, d })
+      else {
+        r.sneaking = false; r.climbing = null
+        if (r.grounded) { r.vy = Math.max(r.vy, RUN.jump); r.grounded = false; r.y += 0.05; ev.push({ t: 'jump' }) }
+        r.rope = { x: w.x, y: w.y, z: w.z, len: d, t: 0, ground: true, low: true }; r.swings++
+        r.vx += (w.x - r.x) / d * RUN.groundWireBoost; r.vz += (w.z - r.z) / d * RUN.groundWireBoost
+        const v = Math.hypot(r.vx, r.vy, r.vz); if (v > RUN.maxSpeed) { const k = RUN.maxSpeed / v; r.vx *= k; r.vy *= k; r.vz *= k }
+        ev.push({ t: 'wire', ground: true, low: true, x: w.x, y: w.y, z: w.z, combo: r.combo })
+      }
+    }
     else if (inp.wireAt && inp.wireAt.ground) {
       // 地面ワイヤー: 空中にいる時だけ、画面の地面をタップした所へ。地面に立っている・壁にいる・届かない・自分より上なら掛からない
       const w = inp.wireAt, d = Math.hypot(w.x - r.x, w.y - (r.y + 1.2), w.z - r.z)
@@ -370,7 +395,10 @@ export function stepRunner(r, inp, dt, world) {
         // 高い所から掛けると通りへ向かって振り下ろし、また上がる。振るたびに空へ昇り続けない
         const low = floorAt(world, r.x, r.z, r.y).h + RUN.swingLow
         const want = Math.max(RUN.minRope, a.y - (low + 1.2))
-        r.rope = { x: a.x, y: a.y, z: a.z, len: Math.min(want, d * 1.5, RUN.wireRange), t: 0 }
+        const len = Math.min(want, d * 1.5, RUN.wireRange)
+        r.rope = { x: a.x, y: a.y, z: a.z, len, t: 0 }
+        // 低い点へ遠くから掛けた時: 長さを今の距離から始めて縮める（押し込むと1フレームで何十mも飛ぶ）。高いビルは今までどおり
+        if (len < d && a.y - floorAt(world, r.x, r.z, r.y).h < RUN.lowAnchor) { r.rope.len = d; r.rope.pull = len }
         r.climbing = null
         // 遅いときは前へ押し出す（止まった所から掛けても振れるように）
         const v = speedOf(r)
@@ -458,8 +486,9 @@ export function stepRunner(r, inp, dt, world) {
 export function groundRelease(r, hop = true) {
   if (!r.rope) return
   const h = Math.hypot(r.vx, r.vz)
-  if (h > 0.5) { r.vx += r.vx / h * RUN.groundWireKick; r.vz += r.vz / h * RUN.groundWireKick }
-  if (hop) r.vy = Math.max(r.vy, RUN.groundWireHop)
+  if (r.rope.low) { if (h > RUN.lowExit) { r.vx *= RUN.lowExit / h; r.vz *= RUN.lowExit / h } }
+  else if (h > 0.5) { r.vx += r.vx / h * RUN.groundWireKick; r.vz += r.vz / h * RUN.groundWireKick }
+  if (hop) r.vy = Math.max(r.vy, r.rope.low ? RUN.lowHop : RUN.groundWireHop)
   else {
     // 地面の近く: 跳ねずに着地する。下向きの勢いの半分を前へ回して、強く叩きつけない（着地の衝撃 6m/s 以下）
     const lost = Math.max(0, -r.vy - 6), h2 = Math.hypot(r.vx, r.vz)
@@ -497,14 +526,19 @@ function physics(r, thr, dt, world, passive) {
     const dx = rp.x - r.x, dy = rp.y - (r.y + 1.2), dz = rp.z - r.z, d = Math.hypot(dx, dy, dz) || 1
     const toward = (r.vx * dx + r.vy * dy + r.vz * dz) / d
     const above = r.y - floorAt(world, r.x, r.z, r.y).h
-    if (d < RUN.groundWireRelease || (toward < 0 && rp.t > 0.25) || rp.t > RUN.groundWireMaxT) groundRelease(r, above > 3)   // 地面から離れた空中で外れた時だけ前へ山なり（地面の近くでは跳ねない）
-    else if (above < 0.8) groundRelease(r, false)   // 地面すれすれ: 跳ねずにそのまま着地して走る（2026-11-03 本人「地面に着いてからバウンドするのはおかしい」）
+    if (d < RUN.groundWireRelease || (toward < 0 && rp.t > 0.25) || rp.t > RUN.groundWireMaxT) groundRelease(r, rp.low || above > 3)   // 地面から離れた空中で外れた時だけ前へ山なり（地面の近くでは跳ねない）。自動販売機は跳び越す
+    else if (above < 0.8 && !rp.low) groundRelease(r, false)   // 地面すれすれ: 跳ねずにそのまま着地して走る（2026-11-03 本人「地面に着いてからバウンドするのはおかしい」）
     else { const a = RUN.groundWireAcc * dt; r.vx += dx / d * a; r.vy += dy / d * a + RUN.gravity * (RUN.ropeG || 1) * dt * 0.9; r.vz += dz / d * a }   // 重力はほぼ打ち消す（点へまっすぐ向かう）
   }
   // ワイヤー: 長さより遠くへは行けない（外へ向かう速さを消す）
   if (r.rope && !r.rope.ground) {
     const rp = r.rope
     rp.t += dt
+    if (rp.pull != null) {   // 低い点へ寄せている間: ロープを縮める。落ちない
+      rp.len = Math.max(rp.pull, rp.len - RUN.lowPull * dt)
+      if (r.vy < 0) r.vy = 0
+      if (rp.len <= rp.pull) rp.pull = null
+    }
     const hx = r.x, hy = r.y + 1.2, hz = r.z
     let dx = hx - rp.x, dy = hy - rp.y, dz = hz - rp.z
     let d = Math.hypot(dx, dy, dz)
@@ -590,7 +624,7 @@ function physics(r, thr, dt, world, passive) {
       if (r.combo >= 2) r.events.push({ t: 'comboEnd', n: r.combo })
       r.combo = 0
       r.groundedSince = r.t
-      if (r.rope) release(r, false)
+      if (r.rope && r.rope.pull == null) release(r, false)
     }
     r.grounded = true; r.airTime = 0; r.coyote = RUN.coyote
     r.onRoof = !!f.roof
@@ -607,7 +641,7 @@ function physics(r, thr, dt, world, passive) {
   }
   // 地面を走っている間はワイヤーを持たない（張っていないワイヤーで引きずらない）
   if (r.grounded && r.rope && r.rope.ground) groundRelease(r, false)   // 地面ワイヤーのまま着地: 跳ねない
-  else if (r.grounded && r.rope && r.rope.t > 0.3) release(r, false)
+  else if (r.grounded && r.rope && r.rope.t > 0.3 && r.rope.pull == null) release(r, false)
   r.groundY = f.h
   if (r.y > (r.maxY || 0)) r.maxY = r.y
   r.roofTime = r.onRoof && r.grounded ? r.roofTime + dt : 0

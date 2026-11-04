@@ -4,7 +4,7 @@
 //   2026-11-02 外部レビュー「OPEN とラーメンが交互に並ぶ」で店先を4種から8種に増やした
 // 型: 0 事務所（コンクリート板）/ 1 タイル張りのマンション / 2 ガラスのビル / 3 レンガ
 import * as THREE from 'three'
-import { Q } from './quality.js?v=14'
+import { Q } from './quality.js?v=15'
 
 const UP_W = 6, UP_H = 7.2, GF_H = 4.5
 const WALLS = {

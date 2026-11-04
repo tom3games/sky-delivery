@@ -3,8 +3,8 @@
 //   rush:    ずっとワイヤーで全速力、近づいたら投げ入れる（速いが崩れる）
 //   skilled: ワイヤーで近くまで行き、最後は着地して壁を登って手渡し
 //   clumsy:  下手な人。skilled と同じ考えだが、反応が0.35秒遅れ、向きがぶれ、ワイヤーを掛け損ねる（3回に1回）
-import { JOB, curOrder } from './delivery.js?v=14'
-import { findAnchor } from './runner.js?v=14'
+import { JOB, curOrder } from './delivery.js?v=15'
+import { findAnchor } from './runner.js?v=15'
 
 const K = 130 / 80
 const XS = [-320, -240, -160, -80, 0, 80, 160, 240, 320].map(x => x * K)
@@ -130,7 +130,9 @@ export function botInput(b, r, sh, world, dt) {
     // 壁の角や別の建物で横へ進めない時は、跳んで離れてやり直す
     // 窓に近づけていない（角・別の建物・別の面）なら、跳んで離れてやり直す
     const dW = Math.hypot(o.x - r.x, o.y - (r.y + 1.1), o.z - r.z)
-    if (b.crawlBest == null || dW < b.crawlBest - 0.3) { b.crawlBest = dW; b.crawlT = 0 } else b.crawlT = (b.crawlT || 0) + dt
+    // 届け先と関係ない低い壁（店の周りの家など）に張り付いたら、窓へ這おうとせず登って越える
+    if (cl.top < 16 && dW > 8) { inp.wallY = 1; inp.wallX = 0; b.crawlBest = null; b.crawlT = 0 }
+    else if (b.crawlBest == null || dW < b.crawlBest - 0.3) { b.crawlBest = dW; b.crawlT = 0 } else b.crawlT = (b.crawlT || 0) + dt
     if (b.crawlT > 1.2) { inp.jump = true; b.crawlT = 0; b.crawlBest = null; b.replan = 0; b.jumpOff = 1.6 }
   }
   // 渡し終えて壁に張り付いている時は、壁から離れて降りる（壁を登り続けて戻れなくなっていた）

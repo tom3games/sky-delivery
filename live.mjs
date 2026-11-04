@@ -30,7 +30,7 @@ for (const [name, bt, opts] of [['chromium', chromium, {}], ['webkit', webkit, {
     return { offers, picked, delivered, next, air }
   })
   await p.waitForTimeout(2500)
-  const res = await p.evaluate(() => ({ mode: sky.mode, net: window.__lastNet, mute: window.__muteOk() }))
+  const res = await p.evaluate(() => ({ mode: sky.mode, net: window.__lastNet, town: !!(sky.world.town && sky.world.town.fill && sky.world.town.fill.vends.length >= 8), mute: window.__muteOk() }))
   out.push(`${name}: flow=${JSON.stringify(flow)} result=${JSON.stringify(res)}`)
   await p.screenshot({ path: `shots/live-${name}.png` })
   const og = await p.evaluate(async () => { const r = await fetch(document.querySelector('meta[property="og:image"]').content); return r.status + ' ' + r.headers.get('content-type') })

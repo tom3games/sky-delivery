@@ -1,10 +1,11 @@
 // 通りの見た目: 電柱・街灯・電線（InstancedMesh）、一般車（WIRE ESCAPE の ProcCar）、通行人（Kenney Mini の歩くアニメ）、一軒家
 // 位置と当たりは shared/street.js / shared/town.js。ここは描くだけ
 import * as THREE from 'three'
-import { clone as skClone } from '../vendor/jsm/utils/SkeletonUtils.js?v=14'
-import { ProcCar } from './carmodel.js?v=14'
-import { charAssets } from './charmodel.js?v=14'
-import { HOUSE } from '../shared/town.js?v=14'
+import { clone as skClone } from '../vendor/jsm/utils/SkeletonUtils.js?v=15'
+import { ProcCar } from './carmodel.js?v=15'
+import { charAssets } from './charmodel.js?v=15'
+import { HOUSE, APT, VEND } from '../shared/town.js?v=15'
+import { Builder } from './geo.js?v=15'
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _p = new THREE.Vector3(), _e = new THREE.Euler()
 
@@ -58,35 +59,113 @@ export function buildPoles3d(scene, allPoles) {
   return { grp, bulbMat }
 }
 
-// 一軒家: 壁・切妻屋根・玄関・窓（窓は夜に灯る）
-export function buildHouses3d(scene, houses) {
-  const grp = new THREE.Group()
-  const walls = [0xe8e0d0, 0xd9cbb0, 0xc9d3d6, 0xe3d6c8, 0xd2c4a8, 0xdfe2dc]
-  const roofs = [0x4a3a32, 0x2f4a5a, 0x5a3228, 0x3a3f46, 0x6a4a2a, 0x2a3a2a]
-  const winMat = new THREE.MeshStandardMaterial({ color: 0x2b3a4a, emissive: 0xffc070, emissiveIntensity: 0, roughness: 0.2 })
-  const doorMat = new THREE.MeshStandardMaterial({ color: 0x6a4a30, roughness: 0.7 })
-  houses.forEach((h, i) => {
-    const g = new THREE.Group(); g.position.set(h.cx, h.y0, h.cz)
-    const W = HOUSE.hw * 2, D = HOUSE.hl * 2, Hh = HOUSE.wall
-    const body = new THREE.Mesh(new THREE.BoxGeometry(W, Hh, D), new THREE.MeshStandardMaterial({ color: walls[i % walls.length], roughness: 0.9 }))
-    body.position.y = Hh / 2; body.castShadow = body.receiveShadow = true
-    // 切妻屋根（棟は道と平行）
-    const shape = new THREE.Shape(); shape.moveTo(-D / 2 - 0.6, 0); shape.lineTo(0, HOUSE.roof); shape.lineTo(D / 2 + 0.6, 0); shape.lineTo(-D / 2 - 0.6, 0)
-    const roof = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: W + 1, bevelEnabled: false }), new THREE.MeshStandardMaterial({ color: roofs[i % roofs.length], roughness: 0.75 }))
-    roof.rotation.y = Math.PI / 2; roof.position.set(-W / 2 - 0.5, Hh, 0); roof.castShadow = true
-    g.add(body, roof)
-    const f = h.face, fz = f * (D / 2 + 0.02)
-    const door = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.1), doorMat); door.position.set(-W / 4, 1.05, fz); door.rotation.y = f > 0 ? 0 : Math.PI
-    g.add(door)
-    for (const [x, y] of [[W / 4, 1.6], [-W / 4, 4.3], [W / 4, 4.3]]) {
-      const w = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.2), winMat); w.position.set(x, y, fz); w.rotation.y = f > 0 ? 0 : Math.PI; g.add(w)
+// 店の周りの町を1つのジオメトリにまとめて描く（一軒家・アパート・自動販売機）。窓とジュースの面だけ別の材質（夜に灯る）
+// 1軒ずつ Mesh にすると 9 ドローコール × 29 軒になる。頂点色で焼いて、全部で本体1・窓1・自販機の面1
+const WALLS = [0xe8e0d0, 0xd9cbb0, 0xc9d3d6, 0xe3d6c8, 0xd2c4a8, 0xdfe2dc, 0xc8b8a0, 0xe6dccb, 0xb9c2b4]
+const ROOFS = [0x4a3a32, 0x2f4a5a, 0x5a3228, 0x3a3f46, 0x6a4a2a, 0x2a3a2a, 0x54575c]
+const APT_WALLS = [0xb7a58c, 0xa9b0b3, 0xc3b299, 0x9fa89f]
+const VEND_BODY = [0xb3262a, 0x1f5aa8, 0xe2e4e6]
+
+// 建物の向きの座標（u=間口の右、v=前）を世界へ。b.box(.., yaw) と同じ変換
+function frame(cx, y0, cz, fx, fz) {
+  const yaw = Math.atan2(fx, fz), c = Math.cos(yaw), s = Math.sin(yaw)
+  return { yaw, at: (u, y, v) => [cx + u * c + v * s, y0 + y, cz - u * s + v * c] }
+}
+function addBoxAt(b, f, u, y, v, hu, hy, hv, color, opts) { const p = f.at(u, y, v); b.box(p[0], p[1], p[2], hu, hy, hv, color, f.yaw, opts) }
+
+function addHouse(b, lit, h, i) {
+  const f = frame(h.cx, h.y0, h.cz, h.fx, h.fz)
+  const W = HOUSE.hw * 2, D = HOUSE.hl * 2, H = HOUSE.wall, R = HOUSE.roof, wall = WALLS[i % WALLS.length], roof = ROOFS[(i * 3 + 1) % ROOFS.length]
+  addBoxAt(b, f, 0, H / 2, 0, W / 2, H / 2, D / 2, wall)
+  // 切妻屋根（棟は間口と平行）
+  const U = W / 2 + 0.5, Ve = D / 2 + 0.6, t = 0.08
+  b.hexa([f.at(-U, H + R - t, 0), f.at(U, H + R - t, 0), f.at(U, H - t, Ve), f.at(-U, H - t, Ve), f.at(-U, H + R + t, 0), f.at(U, H + R + t, 0), f.at(U, H + t, Ve), f.at(-U, H + t, Ve)], roof, { top: roof })
+  b.hexa([f.at(-U, H - t, -Ve), f.at(U, H - t, -Ve), f.at(U, H + R - t, 0), f.at(-U, H + R - t, 0), f.at(-U, H + t, -Ve), f.at(U, H + t, -Ve), f.at(U, H + R + t, 0), f.at(-U, H + R + t, 0)], roof, { top: roof })
+  b.tri(f.at(W / 2, H, -D / 2), f.at(W / 2, H + R, 0), f.at(W / 2, H, D / 2), wall)
+  b.tri(f.at(-W / 2, H, D / 2), f.at(-W / 2, H + R, 0), f.at(-W / 2, H, -D / 2), wall)
+  const v = D / 2 + 0.03, flip = i % 2 ? -1 : 1
+  addBoxAt(b, f, -W / 4 * flip, 1.05, v, 0.55, 1.05, 0.04, 0x6a4a30)                // 玄関
+  addBoxAt(b, f, -W / 4 * flip, 2.35, D / 2 + 0.45, 0.9, 0.05, 0.45, 0x3a3a3a)      // 庇
+  for (const [u, y] of [[W / 4, 1.6], [-W / 4, 4.3], [W / 4, 4.3]]) addBoxAt(lit, f, u * flip, y, v, 0.75, 0.6, 0.03, 0xffffff)
+  // 側面の窓とエアコンの室外機（1軒おき）
+  addBoxAt(lit, f, W / 2 + 0.02, 4.3, 0, 0.03, 0.55, 0.7, 0xffffff)
+  if (i % 2 === 0) addBoxAt(b, f, W / 4 * flip, 0.35, v + 0.3, 0.42, 0.35, 0.2, 0xd8d8d2)
+}
+
+function addApartment(b, lit, a, i) {
+  const f = frame(a.cx, a.y0, a.cz, a.fx, a.fz)
+  const W = APT.hw * 2, D = APT.hl * 2, H = APT.h, fl = H / APT.floors, wall = APT_WALLS[i % APT_WALLS.length]
+  addBoxAt(b, f, 0, H / 2, 0, W / 2, H / 2, D / 2, wall)
+  addBoxAt(b, f, 0, H + 0.2, 0, W / 2 + 0.1, 0.2, D / 2 + 0.1, 0x6b6e70)            // 屋上の縁
+  addBoxAt(b, f, W / 4, H + 1, -1, 1.1, 0.8, 1.1, 0x9a9c9e)                          // 貯水槽
+  for (let k = 0; k < APT.floors; k++) {
+    const y = k * fl
+    for (const u of [-5, -1.7, 1.7, 5]) {
+      addBoxAt(lit, f, u, y + 1.8, D / 2 + 0.03, 1.05, 0.75, 0.03, 0xffffff)
+      if (k > 0) {
+        addBoxAt(b, f, u, y + 0.15, D / 2 + 0.55, 1.45, 0.08, 0.55, 0xbfbfb8)        // ベランダの床
+        addBoxAt(b, f, u, y + 0.65, D / 2 + 1.08, 1.45, 0.45, 0.03, 0x5a5f63)        // 手すり
+      } else if (u === -1.7 || u === 1.7) addBoxAt(b, f, u, 1.05, D / 2 + 0.05, 0.55, 1.05, 0.04, 0x5a4634)
     }
-    // 玄関の庇と小さい門灯
-    const eave = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 0.9), new THREE.MeshStandardMaterial({ color: 0x3a3a3a })); eave.position.set(-W / 4, 2.35, f * (D / 2 + 0.45)); g.add(eave)
-    grp.add(g)
+    addBoxAt(lit, f, W / 2 + 0.02, y + 1.8, 0, 0.03, 0.55, 1, 0xffffff)
+    addBoxAt(lit, f, -W / 2 - 0.02, y + 1.8, 0, 0.03, 0.55, 1, 0xffffff)
+  }
+}
+
+function vendTexture() {
+  const cv = document.createElement('canvas'); cv.width = 128; cv.height = 216
+  const x = cv.getContext('2d')
+  x.fillStyle = '#10151c'; x.fillRect(0, 0, 128, 216)
+  x.fillStyle = '#e9f2f6'; x.fillRect(8, 8, 112, 118)
+  const cans = ['#c8341f', '#1f6fb8', '#e8b52a', '#2d9a58', '#f07d2a', '#7a4a2a', '#d84a7a', '#e8e8e0']
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) {
+    const X = 13 + c * 17.6, Y = 13 + r * 38
+    x.fillStyle = cans[(r * 5 + c * 3) % cans.length]; x.fillRect(X, Y, 13, 26)
+    x.fillStyle = 'rgba(255,255,255,0.55)'; x.fillRect(X + 2, Y + 2, 2.5, 22)
+    x.fillStyle = r === 2 ? '#c8341f' : '#1f6fb8'; x.fillRect(X + 1, Y + 29, 11, 3)
+  }
+  x.fillStyle = '#c7ccd0'; x.fillRect(84, 134, 34, 30)
+  x.fillStyle = '#2a2f36'; x.fillRect(90, 140, 22, 7)
+  x.fillStyle = '#2a2f36'; x.fillRect(16, 176, 96, 26)
+  x.fillStyle = '#54595f'; x.fillRect(20, 180, 88, 8)
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+
+export function buildHouses3d(scene, town) {
+  const grp = new THREE.Group()
+  const body = new Builder(), lit = new Builder()
+  town.houses.forEach((h, i) => addHouse(body, lit, { ...h, fx: 0, fz: h.face }, i))
+  town.fill.houses.forEach((h, i) => addHouse(body, lit, h, i + town.houses.length))
+  town.fill.apts.forEach((a, i) => addApartment(body, lit, a, i))
+  // 広場の真ん中の噴水（前は黒い箱に見えていた）。当たりは city.js の箱のまま
+  const fo = town.fountain
+  if (fo) {
+    const y = fo.y0, h = fo.y1 - fo.y0
+    body.box(fo.cx, y + h / 2, fo.cz, fo.hw + 0.05, h / 2 + 0.01, fo.hl + 0.05, 0x9c988e, 0, { top: 0xb0aca2 })
+    body.box(fo.cx, y + h + 0.02, fo.cz, fo.hw - 0.5, 0.02, fo.hl - 0.5, 0x5a93a8)
+    body.box(fo.cx, y + h + 0.6, fo.cz, 0.5, 0.6, 0.5, 0xa8a49a)
+    body.box(fo.cx, y + h + 1.25, fo.cz, 1.1, 0.08, 1.1, 0x9c988e, 0, { top: 0x5a93a8 })
+  }
+  // 自動販売機: 本体とゴミ箱は本体のジオメトリへ、ジュースの面は1枚の画像の InstancedMesh（夜に灯る）
+  const V = town.fill.vends, tex = vendTexture()
+  const vendMat = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.3, roughness: 0.35 })
+  const faces = new THREE.InstancedMesh(new THREE.PlaneGeometry(VEND.hw * 2 - 0.1, VEND.h - 0.2), vendMat, V.length)
+  V.forEach((v, i) => {
+    const f = frame(v.cx, v.y0, v.cz, v.fx, v.fz)
+    addBoxAt(body, f, 0, VEND.h / 2, 0, VEND.hw, VEND.h / 2, VEND.hl, VEND_BODY[v.c % VEND_BODY.length], { top: 0x33373c })
+    addBoxAt(body, f, VEND.hw + 0.28, 0.4, 0.05, 0.2, 0.4, 0.2, 0x4a5a4a)   // 空き缶入れ
+    const p = f.at(0, VEND.h / 2 + 0.03, VEND.hl + 0.015)
+    _m.compose(_p.set(p[0], p[1], p[2]), _q.setFromEuler(_e.set(0, f.yaw, 0)), _s.set(1, 1, 1)); faces.setMatrixAt(i, _m)
   })
+  const bodyMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 })
+  const winMat = new THREE.MeshStandardMaterial({ color: 0x2b3a4a, emissive: 0xffc070, emissiveIntensity: 0, roughness: 0.2 })
+  const bodyMesh = new THREE.Mesh(body.geometry(), bodyMat), litMesh = new THREE.Mesh(lit.geometry(), winMat)
+  bodyMesh.castShadow = bodyMesh.receiveShadow = true
+  faces.frustumCulled = false
+  grp.add(bodyMesh, litMesh, faces)
   scene.add(grp)
-  return { grp, winMat }
+  return { grp, winMat, vendMat }
 }
 
 // 一般車: カメラの近くの車にだけ見た目を割り当てる（スマホは少なめ）

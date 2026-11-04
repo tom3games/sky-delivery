@@ -1,12 +1,12 @@
 // 見た目の土台: 実写の空（HDRI）での照明・太陽・霞・画面の後処理・実写テクスチャの材質。
 // 素材は Poly Haven（CC0）。public/assets にある。
 import * as THREE from 'three'
-import { Q } from './quality.js?v=14'
-import { EffectComposer } from '../vendor/jsm/postprocessing/EffectComposer.js?v=14'
-import { RenderPass } from '../vendor/jsm/postprocessing/RenderPass.js?v=14'
-import { UnrealBloomPass } from '../vendor/jsm/postprocessing/UnrealBloomPass.js?v=14'
-import { ShaderPass } from '../vendor/jsm/postprocessing/ShaderPass.js?v=14'
-import { OutputPass } from '../vendor/jsm/postprocessing/OutputPass.js?v=14'
+import { Q } from './quality.js?v=15'
+import { EffectComposer } from '../vendor/jsm/postprocessing/EffectComposer.js?v=15'
+import { RenderPass } from '../vendor/jsm/postprocessing/RenderPass.js?v=15'
+import { UnrealBloomPass } from '../vendor/jsm/postprocessing/UnrealBloomPass.js?v=15'
+import { ShaderPass } from '../vendor/jsm/postprocessing/ShaderPass.js?v=15'
+import { OutputPass } from '../vendor/jsm/postprocessing/OutputPass.js?v=15'
 
 const loader = new THREE.TextureLoader()
 const cache = new Map()

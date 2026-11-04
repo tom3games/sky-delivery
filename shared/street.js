@@ -1,7 +1,8 @@
 // 通りの賑わい: 電柱と街灯（ワイヤーを掛けられる）・一般車・通行人。three.js に依存しない（画面と bot で同じものが動く）
 // 2026-11-02 本人「ワイヤーをもっと使わせたいから、なるべく地面にいたらダメみたいに。車と通行人を。ぶつかったらちょっとこぼれる。
 //   電柱とか、ワイヤーを引っ掛けられる場所を増やして」
-import { createTraffic, setTrafficSpeed } from './traffic.js?v=14'
+import { createTraffic, setTrafficSpeed } from './traffic.js?v=15'
+import { addTown } from './town.js?v=15'
 
 export const STREET = {
   poleGap: 26,          // 電柱・街灯の間隔（m）
@@ -29,6 +30,7 @@ function insideBuilding(world, x, z, pad) {
 // 電柱と街灯の位置を決めて world.poles に入れる（runner.js の findAnchor / rayHit が掛け点として使う）
 export function buildPoles(world, center) {
   if (world.poles) return world.poles
+  const town = addTown(world, center)   // 町を先に置く（呼ぶ順で電柱の場所が変わらないように）
   const poles = [], G = world.cityGrid
   const lines = [...G.XS.map(x => ({ x })), ...G.ZS.map(z => ({ z }))]
   for (const sg of world.segs) {
@@ -55,10 +57,13 @@ export function buildPoles(world, center) {
   }
   // 元からある街灯・信号・木（world.objects）も掛け点にする（見た目は scene.js が描いているので prop: true で区別）
   for (const o of world.objects) {
-    if (!['lamp', 'signal', 'tree'].includes(o.type)) continue
+    if (!['lamp', 'signal', 'tree'].includes(o.type) || o.gone) continue   // gone: 店の前で抜いた木。見えないのに掛かっていた
     if (Math.abs(o.cx - center.x) > STREET.area + 60 || Math.abs(o.cz - center.z) > STREET.area + 60) continue
     poles.push({ x: o.cx, z: o.cz, y0: o.y0, y1: o.y0 + (o.type === 'tree' ? 9 : o.def.h), kind: o.type, prop: true })
   }
+  // 店の周りの町: 路地の電柱・街灯（見た目は buildPoles3d）。自動販売機は低い掛け点（low。タップした時だけ掛かる。見た目は buildHouses3d）
+  for (const q of town.fill.posts) poles.push({ x: q.cx, z: q.cz, y0: q.y0, y1: q.y1, kind: q.post, nx: q.nx, nz: q.nz, town: true })
+  for (const v of town.fill.vends) poles.push({ x: v.cx, z: v.cz, y0: v.y0, y1: v.y1, kind: 'vending', prop: true, low: true })
   world.poles = poles
   return poles
 }

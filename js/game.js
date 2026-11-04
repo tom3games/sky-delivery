@@ -1,25 +1,25 @@
 // 空中出前 宙吊軒（1日だけ職場体験 #4）。WIRE ESCAPE のワイヤーと街を使った出前ゲーム
 // 速く飛ぶと料理が崩れて怒られる、ゆっくりだと遅れて怒られる
 import * as THREE from 'three'
-import { GAME } from '../shared/config.js?v=14'
-import { createWorld } from '../shared/track.js?v=14'
-import { buildScene } from './scene.js?v=14'
-import { FX } from './fx.js?v=14'
-import { loadSky, setAniso } from './look.js?v=14'
-import { Q } from './quality.js?v=14'
-import { RunnerModel } from './runnermodel.js?v=14'
-import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=14'
-import { createRunner, stepRunner, findAnchor, rayHit, floorAt, RUN } from '../shared/runner.js?v=14'
-import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=14'
-import { createBot, botInput } from '../shared/bot.js?v=14'
-import { drawPayslip, totals } from './payslip.js?v=14'
-import { createStreet, buildPoles } from '../shared/street.js?v=14'
-import { addTown, clearShopFront } from '../shared/town.js?v=14'
-import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=14'
-import { carLights } from './carmodel.js?v=14'
-import { LOW } from './quality.js?v=14'
-import { createAir, stepAir } from '../shared/air.js?v=14'
-import { airPool } from './air3d.js?v=14'
+import { GAME } from '../shared/config.js?v=15'
+import { createWorld } from '../shared/track.js?v=15'
+import { buildScene } from './scene.js?v=15'
+import { FX } from './fx.js?v=15'
+import { loadSky, setAniso } from './look.js?v=15'
+import { Q } from './quality.js?v=15'
+import { RunnerModel } from './runnermodel.js?v=15'
+import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=15'
+import { createRunner, stepRunner, findAnchor, rayHit, floorAt, RUN } from '../shared/runner.js?v=15'
+import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=15'
+import { createBot, botInput } from '../shared/bot.js?v=15'
+import { drawPayslip, totals } from './payslip.js?v=15'
+import { createStreet, buildPoles } from '../shared/street.js?v=15'
+import { addTown, clearShopFront } from '../shared/town.js?v=15'
+import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=15'
+import { carLights } from './carmodel.js?v=15'
+import { LOW } from './quality.js?v=15'
+import { createAir, stepAir } from '../shared/air.js?v=15'
+import { airPool } from './air3d.js?v=15'
 
 const $ = id => document.getElementById(id)
 // ---------------------------------------------------------------- 読み込みの進み具合（ロード画面）
@@ -263,7 +263,7 @@ function drawSign(o) {
 // 店と一軒家の当たり判定・掛け点、通り沿いの電柱と街灯（2026-11-02 本人「通り抜けできてまう」「一軒家も」「電柱とか掛けられる場所を」）
 const town = addTown(world, JOB.shop)
 const poles3d = buildPoles3d(scene, buildPoles(world, JOB.shop))
-const houses3d = buildHouses3d(scene, town.houses)
+const houses3d = buildHouses3d(scene, town)
 const carsDraw = trafficPool(scene, LOW), pedsDraw = pedPool(scene, LOW)
 let street = createStreet(world, 1)
 let air = createAir(world, 1)   // カラスと野球ボール（2026-11-03 本人「空中の邪魔を足して」）
@@ -290,6 +290,7 @@ function applyDayTime(k) {
   const lit = Math.max(0, Math.min(1, (k - 0.55) / 0.2))
   poles3d.bulbMat.emissiveIntensity = lit * 2.4
   houses3d.winMat.emissiveIntensity = lit * 1.6
+  houses3d.vendMat.emissiveIntensity = 0.3 + lit * 1.1
   shopGroup.children.forEach(o => { if (o.isPointLight) o.intensity = 6 + lit * 10 })
   carLights(lit)
 }
@@ -412,7 +413,7 @@ function aimAt(cx, cy) {
   ndc.set((cx - rc.left) / rc.width * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1)
   ray.setFromCamera(ndc, camera)
   const o = ray.ray.origin, d = ray.ray.direction
-  const b = me && me.rope ? null : rayHit(world, o.x, o.y, o.z, d.x, d.y, d.z, 400)
+  const b = me && me.rope ? null : rayHit(world, o.x, o.y, o.z, d.x, d.y, d.z, 400, me ? Math.max(0, (me.x - o.x) * d.x + (me.y + 1 - o.y) * d.y + (me.z - o.z) * d.z - 1) : 0)
   let at = b
   // 地面ワイヤー: 空中にいて、画面の地面（道・屋上）をちゃんとタップした時だけ。建物にも当たる時は建物を優先（ずれたタップで地面に掛けない）
   if (me && !me.rope && !me.grounded && !me.climbing) {
@@ -922,7 +923,7 @@ function render(dt) {
 
 // ---------------------------------------------------------------- 検証用の窓口
 window.sky = {
-  get mode() { return mode }, log, get hitStop() { return hitStop }, get flashA() { return flashA }, get fovKick() { return fovKick }, get me() { return me }, get sh() { return sh }, get air() { return air }, beam: beam.g, JOB, RUN, world, camera, touchMode, cam,
+  get mode() { return mode }, log, get hitStop() { return hitStop }, get flashA() { return flashA }, get fovKick() { return fovKick }, get me() { return me }, get sh() { return sh }, get air() { return air }, beam: beam.g, JOB, RUN, world, camera, touchMode, cam, renderer,
   start: seed => startShift(seed), toTitle, showResult, setLang: l => { lang = l; applyLang() }, get lang() { return lang },
   dbg: {
     pause: on => { dbgPause = on }, step: n => { for (let i = 0; i < n; i++) stepOnce(); render(STEP) },

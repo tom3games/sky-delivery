@@ -1,12 +1,12 @@
 // コースの見た目を作る。形はすべてコードで組む（外部モデルなし）。
 import * as THREE from 'three'
-import { Builder, textTexture } from './geo.js?v=14'
-import { pbr, boxMap, terrainMaterial } from './look.js?v=14'
-import { buildForest, buildTufts } from './trees.js?v=14'
-import { Q } from './quality.js?v=14'
-import { createFacade } from './facade.js?v=14'
-import { terrain, toWorld, slabTop, forestDensity } from '../shared/track.js?v=14'
-import { DESTRUCT } from '../shared/config.js?v=14'
+import { Builder, textTexture } from './geo.js?v=15'
+import { pbr, boxMap, terrainMaterial } from './look.js?v=15'
+import { buildForest, buildTufts } from './trees.js?v=15'
+import { Q } from './quality.js?v=15'
+import { createFacade } from './facade.js?v=15'
+import { terrain, toWorld, slabTop, forestDensity } from '../shared/track.js?v=15'
+import { DESTRUCT } from '../shared/config.js?v=15'
 
 const PAL = {
   grass: 0x6f9a4a, grass2: 0x86ab55, dirt: 0x9a7a52, rock: 0x8a6a55, rockDark: 0x5e4a3f, city: 0x8a8e94,
