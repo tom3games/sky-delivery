@@ -1,11 +1,11 @@
 // 通りの見た目: 電柱・街灯・電線（InstancedMesh）、一般車（WIRE ESCAPE の ProcCar）、通行人（Kenney Mini の歩くアニメ）、一軒家
 // 位置と当たりは shared/street.js / shared/town.js。ここは描くだけ
 import * as THREE from 'three'
-import { clone as skClone } from '../vendor/jsm/utils/SkeletonUtils.js?v=15'
-import { ProcCar } from './carmodel.js?v=15'
-import { charAssets } from './charmodel.js?v=15'
-import { HOUSE, APT, VEND } from '../shared/town.js?v=15'
-import { Builder } from './geo.js?v=15'
+import { clone as skClone } from '../vendor/jsm/utils/SkeletonUtils.js?v=16'
+import { ProcCar } from './carmodel.js?v=16'
+import { charAssets } from './charmodel.js?v=16'
+import { HOUSE, APT, VEND } from '../shared/town.js?v=16'
+import { Builder } from './geo.js?v=16'
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _p = new THREE.Vector3(), _e = new THREE.Euler()
 

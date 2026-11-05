@@ -1,25 +1,25 @@
 // 空中出前 宙吊軒（1日だけ職場体験 #4）。WIRE ESCAPE のワイヤーと街を使った出前ゲーム
 // 速く飛ぶと料理が崩れて怒られる、ゆっくりだと遅れて怒られる
 import * as THREE from 'three'
-import { GAME } from '../shared/config.js?v=15'
-import { createWorld } from '../shared/track.js?v=15'
-import { buildScene } from './scene.js?v=15'
-import { FX } from './fx.js?v=15'
-import { loadSky, setAniso } from './look.js?v=15'
-import { Q } from './quality.js?v=15'
-import { RunnerModel } from './runnermodel.js?v=15'
-import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=15'
-import { createRunner, stepRunner, findAnchor, rayHit, floorAt, RUN } from '../shared/runner.js?v=15'
-import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=15'
-import { createBot, botInput } from '../shared/bot.js?v=15'
-import { drawPayslip, totals } from './payslip.js?v=15'
-import { createStreet, buildPoles } from '../shared/street.js?v=15'
-import { addTown, clearShopFront } from '../shared/town.js?v=15'
-import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=15'
-import { carLights } from './carmodel.js?v=15'
-import { LOW } from './quality.js?v=15'
-import { createAir, stepAir } from '../shared/air.js?v=15'
-import { airPool } from './air3d.js?v=15'
+import { GAME } from '../shared/config.js?v=16'
+import { createWorld } from '../shared/track.js?v=16'
+import { buildScene } from './scene.js?v=16'
+import { FX } from './fx.js?v=16'
+import { loadSky, setAniso } from './look.js?v=16'
+import { Q } from './quality.js?v=16'
+import { RunnerModel } from './runnermodel.js?v=16'
+import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=16'
+import { createRunner, stepRunner, findAnchor, rayHit, floorAt, RUN } from '../shared/runner.js?v=16'
+import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=16'
+import { createBot, botInput } from '../shared/bot.js?v=16'
+import { drawPayslip, totals } from './payslip.js?v=16'
+import { createStreet, buildPoles } from '../shared/street.js?v=16'
+import { addTown, clearShopFront } from '../shared/town.js?v=16'
+import { buildPoles3d, buildHouses3d, trafficPool, pedPool } from './street3d.js?v=16'
+import { carLights } from './carmodel.js?v=16'
+import { LOW } from './quality.js?v=16'
+import { createAir, stepAir } from '../shared/air.js?v=16'
+import { airPool } from './air3d.js?v=16'
 
 const $ = id => document.getElementById(id)
 // ---------------------------------------------------------------- 読み込みの進み具合（ロード画面）
@@ -400,7 +400,7 @@ addEventListener('pointermove', e => {
   const dx = e.clientX - g.lx, dy = e.clientY - g.ly; g.lx = e.clientX; g.ly = e.clientY
   if (!g.moved && Math.hypot(e.clientX - g.x, e.clientY - g.y) > 12) g.moved = true
   if (!g.moved) return
-  cam.hd -= dx * 0.0072; cam.pitch = Math.max(-0.35, Math.min(1, cam.pitch + dy * 0.0048)); cam.userT = performance.now()   // 見回す感度 0.006/0.004 の1.2倍（2026-11-03 本人「ほんとにちょっとだけ高く」）
+  cam.hd -= dx * 0.00792; cam.pitch = Math.max(-0.35, Math.min(1, cam.pitch + dy * 0.00528)); cam.userT = performance.now()   // 見回す感度 0.0072/0.0048 の約1.1倍（2026-11-05 本人「ほんの少しだけ上げて」。その前は 2026-11-03 に 0.006/0.004 から1.2倍）
 })
 addEventListener('pointerup', e => {
   const g = gest.get(e.pointerId); if (!g) return

@@ -3,8 +3,8 @@
 //   rush:    ずっとワイヤーで全速力、近づいたら投げ入れる（速いが崩れる）
 //   skilled: ワイヤーで近くまで行き、最後は着地して壁を登って手渡し
 //   clumsy:  下手な人。skilled と同じ考えだが、反応が0.35秒遅れ、向きがぶれ、ワイヤーを掛け損ねる（3回に1回）
-import { JOB, curOrder } from './delivery.js?v=15'
-import { findAnchor } from './runner.js?v=15'
+import { JOB, curOrder } from './delivery.js?v=16'
+import { findAnchor } from './runner.js?v=16'
 
 const K = 130 / 80
 const XS = [-320, -240, -160, -80, 0, 80, 160, 240, 320].map(x => x * K)

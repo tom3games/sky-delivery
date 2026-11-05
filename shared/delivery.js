@@ -1,4 +1,4 @@
-import { addTown } from './town.js?v=15'
+import { addTown } from './town.js?v=16'
 // 空中出前の仕事の中身（注文・崩れ・遅れ・受け渡し・投げ入れ・お金）。three.js に依存しない。画面と bot で同じものが動く
 // 固定ステップで stepShift を呼ぶ。runner（shared/runner.js）の状態を読むだけで、動きには触らない（投げた料理だけ自分で飛ばす）
 
