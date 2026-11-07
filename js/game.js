@@ -509,6 +509,7 @@ function toTitle() {
 }
 function startShift(seed = Math.floor(Math.random() * 1e6)) {
   Snd.init(); sfx('click')
+  if (window.TM) TM.start()
   mode = 'play'; paused = false; demo = null; photo = null; photoScore = -1; endAt = 0; afterDel = null
   me = spawnRunner('me'); sh = createShift(world, seed); sh.seed = seed; street = createStreet(world, seed); air = createAir(world, seed)
   newModel()
@@ -715,8 +716,10 @@ function showResult() {
   $('touch').classList.add('hidden')
   show('result')
   window.__lastNet = net
+  if (window.TM) TM.end(net, net >= 5000)
 }
-$('btnSave').onclick = () => { $('slip').toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'sky-delivery-payslip.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000) }) }
+$('btnPost').addEventListener('click', () => { if (window.TM) TM.share('x') })
+$('btnSave').onclick = () => { if (window.TM) TM.share('save'); $('slip').toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'sky-delivery-payslip.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000) }) }
 $('btnStart').onclick = () => startShift()
 $('btnAgain').onclick = () => startShift()
 $('btnTitle').onclick = () => toTitle()
