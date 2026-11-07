@@ -1,5 +1,5 @@
 // 遊ばれ方の計測。素の script で読み、ゲーム側は window.TM があるときだけ呼ぶ（読めなくてもゲームは動く）
-// 使い方: <script src="tm.js?v=1" data-game="slug"></script> / TM.start() / TM.end(点数, クリアしたか) / TM.share('x'|'save')
+// 使い方: <script src="tm.js?v=1" data-game="slug"></script> / TM.start() / TM.end(点数, クリアしたか) / TM.share('x'|'save') / TM.support()
 // 本番ドメインで ID があるときだけ送る。ローカルと自動テストは window.__tmLog に積むだけ
 (function () {
   var ID = ''
@@ -47,7 +47,8 @@
       playing = false
       send('game_end', { play_no: plays, sec: seconds(), score: Number(score) || 0, cleared: cleared ? 1 : 0 })
     },
-    share: function (method) { send('share', { method: method }) }
+    share: function (method) { send('share', { method: method }) },
+    support: function () { send('support_click', {}) }
   }
   window.addEventListener('pagehide', quit)
 })()

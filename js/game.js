@@ -90,7 +90,7 @@ const T = {
     tooFast: '速すぎて受け取れん！', lateMsg: '遅れてるで！',
     react: { good: '早っ！ 熱いうちにいただきます', ok: 'ちょっと減ってるけど、まあええわ', throwOk: '窓から入ってきた！？', mess: 'スープどこいったん？ もう頼まん', late: 'のびのびやん…', drop: '下に落ちたで！' },
     tip: y => `チップ ${y.toLocaleString()}円`, noTip: 'チップなし', allDone: '全部届けた！', timeUp: 'シフト終わり', timeUpHand: '時間切れ。持ったままや',
-    job: '空中出前', boss: '店主', again: 'もう一回', save: '画像を保存', post: 'Xでポスト', toTitle: 'タイトル',
+    job: '空中出前', boss: '店主', support: '作者に餃子をおごる（任意）', again: 'もう一回', save: '画像を保存', post: 'Xでポスト', toTitle: 'タイトル',
     comments: { great: 'ようやった。明日も来てくれ', mess: '速いのはええけど、丼の中身が旅に出とる', late: '丁寧なんはええけど、麺がのびきっとるで', drop: '人の頭の上に料理を降らすな', few: '空ばっかり見とらんと、出前もしてくれ', ok: 'まあまあや。次は崩さず早く', far: '運河の向こうまでようやった。足が速いな', duf: 'デュフフの人からチップもろたんか。あの人、ええ人やで', hand: '持ったまま帰ってくるな。時計も見てくれ' },
     stamps: ['不採用', '要研修', '採用', '即採用'],
     postText: (y, n) => `空中出前のバイトで4分間に${n}件届けて${y.toLocaleString()}円稼いだ`
@@ -138,7 +138,7 @@ const T = {
     tooFast: 'Too fast to grab it!', lateMsg: 'You are late!',
     react: { good: 'Already? Still hot, thanks!', ok: 'A bit spilled, but fine', throwOk: 'It flew in the window!?', mess: 'Where did the soup go?', late: 'The noodles are soggy…', drop: 'It fell on the street!' },
     tip: y => `Tip ¥${y.toLocaleString()}`, noTip: 'No tip', allDone: 'All delivered!', timeUp: 'Shift over', timeUpHand: 'Time up. Still holding one',
-    job: 'Sky delivery', boss: 'Chef', again: 'Again', save: 'Save image', post: 'Post on X', toTitle: 'Title',
+    job: 'Sky delivery', boss: 'Chef', support: 'Buy the dev gyoza (optional)', again: 'Again', save: 'Save image', post: 'Post on X', toTitle: 'Title',
     comments: { great: 'Good work. Come back tomorrow', mess: 'Fast, sure. The soup went on its own trip', late: 'Careful is nice. The noodles are mush', drop: 'Stop raining food on people', few: 'Stop sightseeing and deliver', ok: 'Not bad. Faster and cleaner next time', far: 'All the way across the canal. Fast legs', duf: 'The doo-fu guy tipped you? He is a good man', hand: 'Do not come back still holding it. Watch the clock' },
     stamps: ['REJECT', 'TRAINING', 'HIRED', 'HIRED!'],
     postText: (y, n) => `I delivered ${n} orders by wire in 4 minutes and earned ¥${y.toLocaleString()}`
@@ -719,6 +719,7 @@ function showResult() {
   if (window.TM) TM.end(net, net >= 5000)
 }
 $('btnPost').addEventListener('click', () => { if (window.TM) TM.share('x') })
+$('btnSupport').addEventListener('click', () => { if (window.TM) TM.support() })
 $('btnSave').onclick = () => { if (window.TM) TM.share('save'); $('slip').toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'sky-delivery-payslip.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000) }) }
 $('btnStart').onclick = () => startShift()
 $('btnAgain').onclick = () => startShift()
