@@ -1,4 +1,5 @@
 // SNS 用の画像 og.png（1200x630）。遊んでいる場面（窓の前でワイヤーにぶら下がって岡持ちを差し出す）＋暖簾のタイトル。node og.mjs
+import './mute-auto.mjs'  // テスト中は絶対に音を出さない（playwright を無音に差し替え）
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { muteContext, MUTE_LAUNCH } from './mute.mjs'

@@ -1,4 +1,5 @@
 // 人物と客の見た目を近くで撮る（検証の途中で目で見る用）。node _look.mjs
+import './mute-auto.mjs'  // テスト中は絶対に音を出さない（playwright を無音に差し替え）
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'

@@ -1,4 +1,5 @@
 // 開始地点から8方向を撮り、ドローコールと fps を測る（店の周りの確認用）。node _around.mjs <ラベル>
+import './mute-auto.mjs'  // テスト中は絶対に音を出さない（playwright を無音に差し替え）
 import { chromium, webkit } from 'playwright'
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'

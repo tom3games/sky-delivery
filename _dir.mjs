@@ -1,4 +1,5 @@
 // 向き: カメラを何周回しても、スティックの上下左右＝画面の上下左右か（地上・空中・ワイヤー中・壁）。node _dir.mjs
+import './mute-auto.mjs'  // テスト中は絶対に音を出さない（playwright を無音に差し替え）
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { MUTE_LAUNCH, muteContext } from './mute.mjs'

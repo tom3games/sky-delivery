@@ -1,4 +1,5 @@
 // 遊び中の FPS を測る（人物の見た目を新旧で比べる）。node _fps.mjs
+import './mute-auto.mjs'  // テスト中は絶対に音を出さない（playwright を無音に差し替え）
 import { chromium, webkit } from 'playwright'
 import { spawn } from 'node:child_process'
 import { MUTE_LAUNCH, muteContext } from './mute.mjs'

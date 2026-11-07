@@ -1,4 +1,5 @@
 // 客の見た目を撮る（種類ごとに窓の前から1枚＋受け取った後の反応）。node _cust.mjs
+import './mute-auto.mjs'  // テスト中は絶対に音を出さない（playwright を無音に差し替え）
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'

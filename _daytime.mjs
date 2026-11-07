@@ -1,4 +1,5 @@
 // 昼→夕方→夜を6サイズ×3時刻で撮る（開始直後・中盤・終了間際）。node _daytime.mjs
+import './mute-auto.mjs'  // テスト中は絶対に音を出さない（playwright を無音に差し替え）
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
