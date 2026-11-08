@@ -45,3 +45,11 @@
 - snd/ball_hit.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0（bfh1_hit_01。ボールが当たったゴンッ）
 - snd/wind_loop.wav: Howling wind / Tvabutzku1234 / CC0（Wikimedia Commons。14秒の継ぎ目なしループにした。空中で速い時の風）
 - snd/city_street_loop.wav: Sunday in the city street noise 1 / cori / Public domain（Wikimedia Commons。静かな通りの22.5秒ループ。街の環境音）
+
+## フォント（SIL Open Font License 1.1）
+
+fonts/ の woff2 は Google Fonts から、画面で使う文字だけを取り出した物（tools/fontlink.mjs）。ライセンス文は fonts/OFL-*.txt。
+
+- Yuji Syuku / Copyright 2021 The Yuji Project Authors
+- Klee One / Copyright 2020 The Klee Project Authors
+- BIZ UDPGothic / Copyright 2022 The BIZ UDGothic Project Authors
