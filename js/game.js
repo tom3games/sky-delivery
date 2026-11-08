@@ -951,4 +951,9 @@ applyLang()
 toTitle()
 requestAnimationFrame(frame)
 // ロード画面は読み込みが全部終わってから消す（テクスチャ・人物の GLB を three の読み込み数で数える）
-bootWatch(() => { window.__skyReady = true; loadCustAssets(); bootFinished() })   // 窓の客・壁の法線と粗さは準備完了のあとで裏で読む
+// 窓の客・壁の法線と粗さ・最初の画面に出ない字のフォント（fonts.css の b）は準備完了のあとで裏で読む
+bootWatch(() => {
+  window.__skyReady = true; try { performance.mark('skyReady') } catch (e) {}
+  loadCustAssets(); bootFinished()
+  try { document.fonts.forEach(f => { if (f.status === 'unloaded') f.load().catch(() => {}) }) } catch (e) {}
+})

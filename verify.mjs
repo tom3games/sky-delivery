@@ -449,14 +449,14 @@ await t('本体は1つにまとめた dist/game.js（index から読む・import
   for (const [k, v] of Object.entries(seen)) if (v.size > 1) bad.push(k + ':' + [...v])
   expect(!bad.length, bad.join(' ')); return true
 })
-await t('文字だけのフォント: 読み込み（text=）が index.html に最新で入っている・本体を待たせない（media=print）・筆の書体は見出しの文字だけの別の読み込み', async () => {
-  const { fontHref, brushHref } = await import('./tools/fontlink.mjs')
-  const h = (await import('node:fs')).readFileSync(ROOT + '/index.html', 'utf8'), m = h.match(/<link id="gfonts" href="([^"]+)"[^>]*>/), b = h.match(/<link id="gbrush" href="([^"]+)"[^>]*>/)
-  expect(m && b && m[1].replace(/&amp;/g, '&') === fontHref() && b[1].replace(/&amp;/g, '&') === brushHref() && /media="print"/.test(m[0]) && /media="print"/.test(b[0]), 'node tools/fontlink.mjs を回す')
-  // canvas に筆の書体で書くのは 看板・暖簾・届け先の札 の3か所だけ（増やしたら fontlink の BRUSH_KEYS に足す）
-  const n = (h + (await import('node:fs')).readFileSync(ROOT + '/js/game.js', 'utf8')).split('"Yuji Syuku"').length - 1
+await t('文字だけのフォント（自前の fonts/）: fonts.css と woff2 が今の文字で作られている（node tools/fontlink.mjs）・index から fonts.css?v= を読む・Google には取りに行かない・canvas に筆の書体で書くのは3か所だけ', async () => {
+  const fs = await import('node:fs'), { plan, fontsCss } = await import('./tools/fontlink.mjs')
+  const h = fs.readFileSync(ROOT + '/index.html', 'utf8'), man = JSON.parse(fs.readFileSync(ROOT + '/fonts/manifest.json', 'utf8'))
+  const stale = plan().filter(q => man[q.file] !== q.txt || !fs.existsSync(ROOT + '/' + q.file)).map(q => q.file)
+  expect(!stale.length && fs.readFileSync(ROOT + '/fonts.css', 'utf8') === fontsCss() && /<link id="gfonts" rel="stylesheet" href="fonts\.css\?v=[0-9a-f]{8}">/.test(h) && !/fonts\.(googleapis|gstatic)/.test(h), 'node tools/fontlink.mjs を回す ' + stale.join(' '))
+  const n = (h + fs.readFileSync(ROOT + '/js/game.js', 'utf8')).split('"Yuji Syuku"').length - 1
   expect(n === 3, 'Yuji Syuku in canvas: ' + n)
-  return { chars: decodeURIComponent(fontHref().split('text=')[1]).length, brush: decodeURIComponent(brushHref().split('text=')[1]).length }
+  return plan().map(q => q.file.slice(6, -6) + ':' + q.txt.length).join(' ')
 })
 await t('地面ワイヤー（2026-11-03 本人「空中に浮いてる間は地面にもワイヤーつけて加速」「地面をちゃんとタップしなあかん感じに」）: 地面に立っている時は地面に掛からない／空中では掛かってすぐ速くなり（0.3秒で25m/s）、近く（4m）で外れる。地面の近くで外れても着地しても跳ね返らない／1ステップで最高速×dt より動かない（瞬間移動しない）／ワイヤーボタン（狙いなし）では空中でも地面に掛からない', () => {
   const DT = 1 / 60
@@ -539,6 +539,16 @@ await t('先読み（index.html の preload）: 最初の画面の素材を本�
     out[touch ? 'phone' : 'pc'] = { pre: pre.length, dups, unused, warn }
   }
   expect(Object.values(out).every(o => o.pre >= 16 && !o.dups.length && !o.unused.length && !o.warn.length), JSON.stringify(out)); return { phone: out.phone.pre, pc: out.pc.pre }
+})
+await t('フォントの読み込み: 準備完了までに取るのは最初の画面の字（l と a）だけ（届け先の札の canvas が品名を描くので Klee One の b は前から取る）・残りは準備完了のあとで全部読み終わる', async () => {
+  const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(ctx)
+  const q = await ctx.newPage()
+  await q.goto(URL0); await q.waitForFunction(() => window.__skyReady, null, { timeout: 30000 })
+  await q.waitForFunction(() => { let n = 0, ok = 0; document.fonts.forEach(f => { n++; if (f.status === 'loaded') ok++ }); return n >= 12 && ok === n }, null, { timeout: 20000 })
+  // 準備完了の印（performance.mark）より前に取り始めた woff2
+  const atReady = await q.evaluate(() => { const t = performance.getEntriesByName('skyReady')[0].startTime; return performance.getEntriesByType('resource').filter(e => /fonts\/.*woff2/.test(e.name) && e.startTime < t).map(e => e.name.match(/fonts\/([a-z0-9]+-[lab])/)[1]) })
+  await ctx.close()
+  expect(atReady.length && atReady.every(f => !/-b$/.test(f) || f === 'klee600-b'), JSON.stringify(atReady)); return { atReady: atReady.join(' ') }
 })
 await t('ロード画面（2026-11-03 本人「開いた最初に、いい感じのロード中の画面を」）: 開いた瞬間に世界観の絵と文字と進み具合が出て、読み込み（人物の GLB）が終わるまで消えない。終わったら消える', async () => {
   const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(ctx)
