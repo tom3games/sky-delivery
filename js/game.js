@@ -1,5 +1,6 @@
 // 空中出前 宙吊軒（1日だけ職場体験 #4）。WIRE ESCAPE のワイヤーと街を使った出前ゲーム
 // 速く飛ぶと料理が崩れて怒られる、ゆっくりだと遅れて怒られる
+import './preload.js?v=16'   // 一番先に: 最初の画面の素材を取り始める
 import * as THREE from 'three'
 import { GAME } from '../shared/config.js?v=16'
 import { createWorld } from '../shared/track.js?v=16'
