@@ -57,6 +57,7 @@ button,a{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touc
 /* 2026-11-08 本人「もう少しだけ目立つように。やりすぎない感じで」: 支援ボタンだけ金の細い縁と小さな贈り物の線画（共通 support.js と同じ見た目） */
 #btnSupport{gap:7px;min-height:40px;padding:0 16px;font-size:14px;color:#FFE7A6;background:rgba(28,22,14,.84);border:1.5px solid rgba(232,194,106,.9);box-shadow:0 2px 12px rgba(232,194,106,.22)}
 #btnSupport svg{flex:none}
+#btnHome{flex-basis:100%;text-align:center;padding:4px 10px;color:rgba(255,255,255,.8);font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px}
 .tlink{padding:6px 2px;text-decoration:underline;text-underline-offset:4px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
 .tlink.strong{font-weight:700}
 
