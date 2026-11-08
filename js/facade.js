@@ -5,6 +5,7 @@
 // 型: 0 事務所（コンクリート板）/ 1 タイル張りのマンション / 2 ガラスのビル / 3 レンガ
 import * as THREE from 'three'
 import { Q } from './quality.js?v=16'
+import { afterBoot } from './look.js?v=16'
 
 const UP_W = 6, UP_H = 7.2, GF_H = 4.5
 const WALLS = {
@@ -29,10 +30,14 @@ export function createFacade() {
 
   let imgs = null
   draw()
-  // 実写の壁を読み込んだら描き直す
-  const load = (name, m) => new Promise(res => { const u = `assets/${Q.tex}/${name}_${m}.webp`, LM = THREE.DefaultLoadingManager; LM.itemStart(u); const im = new Image(); im.onload = () => { LM.itemEnd(u); res(im) }; im.onerror = () => { LM.itemError(u); LM.itemEnd(u); res(null) }; im.src = u })   // ロード画面の数に入れる
-  Promise.all(Object.entries(WALLS).map(async ([k, [name]]) => [k, { a: await load(name, 'diff'), n: await load(name, 'nor_gl'), r: await load(name, 'rough') }]))
-    .then(list => { imgs = Object.fromEntries(list); draw(); for (const t of Object.values(tex)) t.needsUpdate = true })
+  // 実写の壁を読み込んだら描き直す。色はロード画面の数に入れて待つ。法線と粗さは準備完了のあとで読んで、もう一度描き直す
+  const load = (name, m, count) => new Promise(res => { const u = `assets/${Q.tex}/${name}_${m}.webp`, LM = THREE.DefaultLoadingManager; if (count) LM.itemStart(u); const im = new Image(); im.onload = () => { if (count) LM.itemEnd(u); res(im) }; im.onerror = () => { if (count) { LM.itemError(u); LM.itemEnd(u) } res(null) }; im.src = u })
+  const redraw = () => { draw(); for (const t of Object.values(tex)) t.needsUpdate = true }
+  Promise.all(Object.entries(WALLS).map(async ([k, [name]]) => [k, { a: await load(name, 'diff', true), n: null, r: null }]))
+    .then(list => {
+      imgs = Object.fromEntries(list); redraw()
+      afterBoot(() => Promise.all(Object.entries(WALLS).map(async ([k, [name]]) => { const [n, r] = await Promise.all([load(name, 'nor_gl'), load(name, 'rough')]); imgs[k].n = n; imgs[k].r = r })).then(redraw))
+    })
 
   // マス (col,row) を、左下原点・メートル単位（W x H）で描けるようにする
   function cell(col, row, W, H, span = 1) {

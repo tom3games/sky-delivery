@@ -15,10 +15,10 @@ let maxAniso = 8
 export function setAniso(renderer) { maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy()) }
 
 // 1つの素材（色・法線・粗さ）を読む。repeat はワールド座標で何 m ごとに繰り返すかを使う側で決める
-export function tex(name, map, srgb = false) {
+export function tex(name, map, srgb = false, manager) {
   const key = name + map
   if (cache.has(key)) return cache.get(key)
-  const t = loader.load(`assets/${Q.tex}/${name}_${map}.webp`)
+  const t = (manager ? new THREE.TextureLoader(manager) : loader).load(`assets/${Q.tex}/${name}_${map}.webp`)
   t.wrapS = t.wrapT = THREE.RepeatWrapping
   t.anisotropy = maxAniso
   if (srgb) t.colorSpace = THREE.SRGBColorSpace
@@ -26,10 +26,25 @@ export function tex(name, map, srgb = false) {
   return t
 }
 
+// 準備完了（ロード画面が消える）のあとで読むもの。最初の画面に要るのは色の画像だけで、法線と粗さは後から差し替える
+const lateQ = []; let booted = false
+export function afterBoot(fn) { if (booted) fn(); else lateQ.push(fn) }
+export function bootFinished() { if (booted) return; booted = true; for (const f of lateQ.splice(0)) f() }
+// 差し替えるまでの中立の 1x1（法線 = 真上、粗さ = 材質の roughness そのまま）。材質の作りは最初から同じなので描き直しの重さが出ない
+const flat = rgb => { const t = new THREE.DataTexture(new Uint8Array([...rgb, 255]), 1, 1); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.needsUpdate = true; return t }
+const FLAT = { nor_gl: flat([128, 128, 255]), rough: flat([255, 255, 255]) }
+const lateMgr = new THREE.LoadingManager()   // ロード画面の数に入れない
+function lateMap(mat, slot, name, map) {
+  mat[slot] = FLAT[map]
+  afterBoot(() => { mat[slot] = tex(name, map, false, lateMgr) })
+}
+
 export function pbr(name, { repeat = 1, color = 0xffffff, roughness = 1, normalScale = 1, ...rest } = {}) {
   // 繰り返しは箱投影の倍率で決めるので、テクスチャ自体は共有する（読み込み前の複製は警告の元）
-  const map = tex(name, 'diff', true), nor = tex(name, 'nor_gl'), rough = tex(name, 'rough')
-  return new THREE.MeshStandardMaterial({ map, normalMap: nor, roughnessMap: rough, roughness, color, normalScale: new THREE.Vector2(normalScale, normalScale), ...rest })
+  const map = tex(name, 'diff', true)
+  const m = new THREE.MeshStandardMaterial({ map, normalMap: FLAT.nor_gl, roughnessMap: FLAT.rough, roughness, color, normalScale: new THREE.Vector2(normalScale, normalScale), ...rest })
+  lateMap(m, 'normalMap', name, 'nor_gl'); lateMap(m, 'roughnessMap', name, 'rough')
+  return m
 }
 
 // ---------------------------------------------------------------- 空と太陽

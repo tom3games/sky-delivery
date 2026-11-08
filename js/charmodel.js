@@ -27,13 +27,13 @@ function recolor(img) {
   return t
 }
 
+// 配達員（自分）だけ先に読む。準備完了はこれを待つ。窓の客は準備完了のあと loadCustAssets で裏で読む（届くまでは影絵の板）
 export function loadCharAssets() {
   if (A.loading) return A.loading
   const L = new GLTFLoader()
   const get = f => new Promise((ok, ng) => L.load(BASE + f, ok, undefined, ng))
-  A.loading = Promise.all([get('Ranger.glb'), get('Rig_Medium_General.glb'), get('Rig_Medium_MovementBasic.glb'), get('aid-glasses.glb'),
-    ...CHAR_FILES.map(n => get('character-' + n + '.glb'))])
-    .then(([r, g1, g2, gl, ...cs]) => {
+  A.loading = Promise.all([get('Ranger.glb'), get('Rig_Medium_General.glb'), get('Rig_Medium_MovementBasic.glb')])
+    .then(([r, g1, g2]) => {
       r.scene.traverse(o => {
         if (o.isMesh) {
           o.castShadow = true; o.frustumCulled = false
@@ -44,12 +44,24 @@ export function loadCharAssets() {
       })
       A.ranger = r.scene
       for (const cl of [...g1.animations, ...g2.animations]) A.clips[cl.name] = cl
-      cs.forEach((c, i) => { A.custs[CHAR_FILES[i]] = { scene: c.scene, clips: c.animations }; c.scene.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false } }) })
-      A.glasses = gl.scene
       A.ready = true
       return A
     }).catch(e => { A.failed = true; console.warn('char load failed', e); return A })
   return A.loading
+}
+// 窓の客（Kenney Mini 11人＋眼鏡）。全部そろってから一度に入れる（途中の人だけ 3D になるのを避ける）
+export function loadCustAssets() {
+  if (A.custLoading) return A.custLoading
+  const L = new GLTFLoader()
+  const get = f => new Promise((ok, ng) => L.load(BASE + f, ok, undefined, ng))
+  A.custLoading = Promise.all([get('aid-glasses.glb'), ...CHAR_FILES.map(n => get('character-' + n + '.glb'))])
+    .then(([gl, ...cs]) => {
+      const custs = {}
+      cs.forEach((c, i) => { custs[CHAR_FILES[i]] = { scene: c.scene, clips: c.animations }; c.scene.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false } }) })
+      A.glasses = gl.scene; A.custs = custs; A.custReady = true
+      return A
+    }).catch(e => { A.custFailed = true; console.warn('customer load failed', e); return A })
+  return A.custLoading
 }
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3()

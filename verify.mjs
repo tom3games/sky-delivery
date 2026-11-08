@@ -13,6 +13,7 @@ import { AIR, createAir, stepAir } from './shared/air.js'
 import { STREET } from './shared/street.js'
 import { sweep } from './tools/reach.mjs'
 const ROOT = import.meta.dirname
+execFileSync(process.execPath, ['tools/build.mjs'], { cwd: ROOT, stdio: 'inherit' })   // 公開するのは1つにまとめた dist/game.js。先に作り直す
 mkdirSync(ROOT + '/shots', { recursive: true })
 const PORT = 5390
 const server = spawn(process.execPath, ['server.mjs'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT) } })
@@ -34,7 +35,8 @@ async function open(browser, opts = {}) {
   const p = await ctx.newPage(); p.errs = []
   p.on('pageerror', e => p.errs.push('pageerror ' + e.message))
   p.on('console', m => { if (m.type() === 'error' && !/GL Driver|WebGL|GPU stall/.test(m.text())) p.errs.push('console ' + m.text()) })
-  p.on('requestfailed', r => { if (!/fonts\.(googleapis|gstatic)/.test(r.url())) p.errs.push('reqfail ' + r.url()) })
+  // GLB は three の FileLoader が中身を読み切ったあと Chromium が ERR_ABORTED（canceled）と報告することがある（データは届いて使えている）。成否は下の charAssets で見る
+  p.on('requestfailed', r => { const e = r.failure() && r.failure().errorText; if (/fonts\.(googleapis|gstatic)/.test(r.url()) || (/\.glb/.test(r.url()) && e === 'net::ERR_ABORTED')) return; p.errs.push('reqfail ' + r.url() + ' ' + e) })
   await p.goto(URL0); await p.waitForFunction(() => window.__skyReady, null, { timeout: 60000 })
   return p
 }
@@ -438,10 +440,19 @@ await t('野球ボール: 打った瞬間に「危ない」の予告（落下点
   const lead = (hitAt - warnAt) / 60
   expect(warnAt >= 0 && hitAt > 0 && lead >= 2 && !dodgedHit && JOB.ballHit < 15, JSON.stringify({ warnAt, hitAt, lead, dodgedHit })); return { lead: +lead.toFixed(2), dodged: !dodgedHit }
 })
-await t('先読み（modulepreload）は importmap より後にある（前だと Chrome で "three" が解決できず起動しない。2026-11-03 WIRE ESCAPE で公開版が止まった）', async () => {
-  const h = (await import('node:fs')).readFileSync(ROOT + '/index.html', 'utf8')
-  const im = h.indexOf('type="importmap"'), mp = h.indexOf('rel="modulepreload"')
-  expect(im > 0 && (mp < 0 || mp > im), JSON.stringify({ im, mp })); return { im, mp }
+await t('本体は1つにまとめた dist/game.js（index から読む・importmap も元のファイルの先読みも無い）／元のファイルで同じファイルを違う ?v= で読んでいない', async () => {
+  const fs = await import('node:fs'), h = fs.readFileSync(ROOT + '/index.html', 'utf8')
+  expect(/<script type="module" src="dist\/game\.js\?v=\d+"/.test(h) && !/src="js\/game\.js/.test(h) && !/importmap/.test(h) && !/modulepreload" href="(js|shared|vendor)\//.test(h), 'index')
+  const seen = {}, bad = []
+  for (const f of execFileSync('/bin/sh', ['-c', 'ls js/*.js shared/*.js'], { cwd: ROOT, encoding: 'utf8' }).trim().split('\n'))
+    for (const m of fs.readFileSync(ROOT + '/' + f, 'utf8').matchAll(/from '([^']+\.js)\?v=(\d+)'/g)) { const k = m[1].split('/').pop(); (seen[k] ||= new Set()).add(m[2]) }
+  for (const [k, v] of Object.entries(seen)) if (v.size > 1) bad.push(k + ':' + [...v])
+  expect(!bad.length, bad.join(' ')); return true
+})
+await t('文字だけのフォント: 画面で使う文字が全部フォントの読み込み（text=）に入っている・本体を待たせない（media=print）', async () => {
+  const { fontHref } = await import('./tools/fontlink.mjs')
+  const h = (await import('node:fs')).readFileSync(ROOT + '/index.html', 'utf8'), m = h.match(/<link id="gfonts" href="([^"]+)"[^>]*>/)
+  expect(m && m[1].replace(/&amp;/g, '&') === fontHref() && /media="print"/.test(m[0]), 'node tools/fontlink.mjs を回す'); return { chars: decodeURIComponent(fontHref().split('text=')[1]).length }
 })
 await t('地面ワイヤー（2026-11-03 本人「空中に浮いてる間は地面にもワイヤーつけて加速」「地面をちゃんとタップしなあかん感じに」）: 地面に立っている時は地面に掛からない／空中では掛かってすぐ速くなり（0.3秒で25m/s）、近く（4m）で外れる。地面の近くで外れても着地しても跳ね返らない／1ステップで最高速×dt より動かない（瞬間移動しない）／ワイヤーボタン（狙いなし）では空中でも地面に掛からない', () => {
   const DT = 1 / 60
@@ -489,7 +500,7 @@ await t('AI臭さチェック NG 0', () => {
 // ---------------------------------------------------------------- ブラウザ
 const browser = await chromium.launch({ ...MUTE_LAUNCH, args: [...MUTE_LAUNCH.args, ...GL] })
 const p = await open(browser)
-await t('起動時にエラーが出ない', async () => { expect(p.errs.length === 0, p.errs.join('|')) })
+await t('起動時にエラーが出ない（後から読む窓の客まで全部読めている）', async () => { await p.waitForFunction(() => __bootDbg().cust, null, { timeout: 30000 }); const d = await p.evaluate(() => __bootDbg()); expect(p.errs.length === 0 && d.ch && !d.chFail, p.errs.join('|') + JSON.stringify(d)) })
 await t('ロード画面（2026-11-03 本人「開いた最初に、いい感じのロード中の画面を」）: 開いた瞬間に世界観の絵と文字と進み具合が出て、読み込み（人物の GLB）が終わるまで消えない。終わったら消える', async () => {
   const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(ctx)
   let release; const gate = new Promise(r => { release = r })
@@ -505,9 +516,32 @@ await t('ロード画面（2026-11-03 本人「開いた最初に、いい感じ
   await ctx.close()
   expect(first.shown && first.art && first.msg.length >= 6 && mid.shown && !mid.ready && parseInt(mid.pct) > 0 && parseInt(mid.pct) < 100 && after.hidden && after.pct === '100%' && !after.err && !errs.length, JSON.stringify({ first, mid, after, errs })); return { msg: first.msg, mid: mid.pct }
 })
+await t('後から読む物（窓の客の GLB・壁の法線と粗さ）が届く前に始めても遊べる: 準備完了は待たない／窓は影絵の板で出る／届いたら 3D の客に替わる／届かなくても止まらずエラーなし', async () => {
+  const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(ctx)
+  let release; const gate = new Promise(r => { release = r })
+  const late = /character-|aid-glasses|_nor_gl\.webp|_rough\.webp/
+  await ctx.route(u => late.test(u.toString()), async route => { await gate; await route.continue() })
+  const q = await ctx.newPage(); const errs = []; q.on('pageerror', e => errs.push(e.message))
+  await q.goto(URL0, { waitUntil: 'commit' }); await q.waitForFunction(() => window.__skyReady, null, { timeout: 30000 })
+  const before = await q.evaluate(() => { sky.start(3); sky.dbg.pause(true); sky.dbg.step(3); sky.dbg.teleport(sky.JOB.pick.x, 0, sky.JOB.pick.z); sky.dbg.step(3); const u = sky.dbg.target.userData; return { cust: __bootDbg().cust, board: u.cust.visible, person: u.person.group.visible, order: !!sky.sh.cur && sky.dbg.target.visible } })
+  // 届かないまま 6 秒走らせる（自動で飛ばして配達も進める）
+  const mid = await q.evaluate(() => { sky.dbg.keys.add('KeyW'); for (let i = 0; i < 6; i++) { sky.dbg.wireAuto(); sky.dbg.step(60) } sky.dbg.keys.delete('KeyW'); return { mode: sky.mode } })
+  release()
+  await q.waitForFunction(() => __bootDbg().cust, null, { timeout: 30000 })
+  const after = await q.evaluate(() => { if (!sky.sh.carrying) { sky.dbg.teleport(sky.JOB.pick.x, 0, sky.JOB.pick.z); sky.dbg.step(3); } sky.dbg.step(2); const u = sky.dbg.target.userData; return { vis: sky.dbg.target.visible, board: u.cust.visible, person: u.person.group.visible } })
+  await ctx.close()
+  // 届かないまま（失敗）でも止まらない
+  const c2 = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(c2)
+  await c2.route(u => late.test(u.toString()), r => r.abort())
+  const q2 = await c2.newPage(); const errs2 = []; q2.on('pageerror', e => errs2.push(e.message))
+  await q2.goto(URL0, { waitUntil: 'commit' }); await q2.waitForFunction(() => window.__skyReady, null, { timeout: 30000 })
+  const fail = await q2.evaluate(() => { sky.start(4); sky.dbg.pause(true); sky.dbg.step(3); sky.dbg.teleport(sky.JOB.pick.x, 0, sky.JOB.pick.z); sky.dbg.step(3); sky.dbg.step(60); const u = sky.dbg.target.userData; return { mode: sky.mode, board: u.cust.visible } })
+  await q2.waitForTimeout(1500); await c2.close()
+  expect(!before.cust && before.order && before.board && !before.person && mid.mode === 'play' && !after.board && after.person && fail.mode === 'play' && fail.board && !errs.length && !errs2.length, JSON.stringify({ before, mid, after, fail, errs, errs2 })); return { before, after }
+})
 await t('起動失敗の保険: 本体のファイルが読めないと、9秒で原因の表示が出る', async () => {
   const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(ctx)
-  await ctx.route('**/js/fx.js*', route => route.fulfill({ status: 404, body: 'nope' }))
+  await ctx.route('**/dist/game.js*', route => route.fulfill({ status: 404, body: 'nope' }))
   const q = await ctx.newPage(); await q.goto(URL0)
   await q.waitForSelector('#boot-err', { timeout: 15000 }).catch(() => null)
   const r = await q.evaluate(() => { const d = document.getElementById('boot-err'); return { shown: !!d, text: d ? d.textContent.slice(0, 80) : '' } })

@@ -5,10 +5,10 @@ import { GAME } from '../shared/config.js?v=16'
 import { createWorld } from '../shared/track.js?v=16'
 import { buildScene } from './scene.js?v=16'
 import { FX } from './fx.js?v=16'
-import { loadSky, setAniso } from './look.js?v=16'
+import { loadSky, setAniso, bootFinished } from './look.js?v=16'
 import { Q } from './quality.js?v=16'
 import { RunnerModel } from './runnermodel.js?v=16'
-import { CharRunnerModel, Customer, loadCharAssets, charAssets } from './charmodel.js?v=16'
+import { CharRunnerModel, Customer, loadCharAssets, loadCustAssets, charAssets } from './charmodel.js?v=16'
 import { createRunner, stepRunner, findAnchor, rayHit, floorAt, RUN } from '../shared/runner.js?v=16'
 import { JOB, createShift, stepShift, curOrder, payData, money, earned } from '../shared/delivery.js?v=16'
 import { createBot, botInput } from '../shared/bot.js?v=16'
@@ -25,7 +25,7 @@ const $ = id => document.getElementById(id)
 // ---------------------------------------------------------------- 読み込みの進み具合（ロード画面）
 const LM = THREE.DefaultLoadingManager, bootP = { done: 0, total: 0 }
 LM.onStart = LM.onProgress = (url, a, b) => { bootP.done = a; bootP.total = b; bootP.at = performance.now(); window.__bootSet && window.__bootSet(0.2 + 0.8 * (b ? a / b : 0)) }
-window.__bootDbg = () => ({ ...bootP, ch: charAssets.ready, chFail: charAssets.failed, now: Math.round(performance.now()) })   // 検証用
+window.__bootDbg = () => ({ ...bootP, ch: charAssets.ready, chFail: charAssets.failed, cust: !!charAssets.custReady, now: Math.round(performance.now()) })   // 検証用
 function bootWatch(onReady) {
   const t0 = performance.now()
   const tick = () => {
@@ -951,4 +951,4 @@ applyLang()
 toTitle()
 requestAnimationFrame(frame)
 // ロード画面は読み込みが全部終わってから消す（テクスチャ・人物の GLB を three の読み込み数で数える）
-bootWatch(() => { window.__skyReady = true })
+bootWatch(() => { window.__skyReady = true; loadCustAssets(); bootFinished() })   // 窓の客・壁の法線と粗さは準備完了のあとで裏で読む
