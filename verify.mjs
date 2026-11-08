@@ -449,10 +449,14 @@ await t('本体は1つにまとめた dist/game.js（index から読む・import
   for (const [k, v] of Object.entries(seen)) if (v.size > 1) bad.push(k + ':' + [...v])
   expect(!bad.length, bad.join(' ')); return true
 })
-await t('文字だけのフォント: 画面で使う文字が全部フォントの読み込み（text=）に入っている・本体を待たせない（media=print）', async () => {
-  const { fontHref } = await import('./tools/fontlink.mjs')
-  const h = (await import('node:fs')).readFileSync(ROOT + '/index.html', 'utf8'), m = h.match(/<link id="gfonts" href="([^"]+)"[^>]*>/)
-  expect(m && m[1].replace(/&amp;/g, '&') === fontHref() && /media="print"/.test(m[0]), 'node tools/fontlink.mjs を回す'); return { chars: decodeURIComponent(fontHref().split('text=')[1]).length }
+await t('文字だけのフォント: 読み込み（text=）が index.html に最新で入っている・本体を待たせない（media=print）・筆の書体は見出しの文字だけの別の読み込み', async () => {
+  const { fontHref, brushHref } = await import('./tools/fontlink.mjs')
+  const h = (await import('node:fs')).readFileSync(ROOT + '/index.html', 'utf8'), m = h.match(/<link id="gfonts" href="([^"]+)"[^>]*>/), b = h.match(/<link id="gbrush" href="([^"]+)"[^>]*>/)
+  expect(m && b && m[1].replace(/&amp;/g, '&') === fontHref() && b[1].replace(/&amp;/g, '&') === brushHref() && /media="print"/.test(m[0]) && /media="print"/.test(b[0]), 'node tools/fontlink.mjs を回す')
+  // canvas に筆の書体で書くのは 看板・暖簾・届け先の札 の3か所だけ（増やしたら fontlink の BRUSH_KEYS に足す）
+  const n = (h + (await import('node:fs')).readFileSync(ROOT + '/js/game.js', 'utf8')).split('"Yuji Syuku"').length - 1
+  expect(n === 3, 'Yuji Syuku in canvas: ' + n)
+  return { chars: decodeURIComponent(fontHref().split('text=')[1]).length, brush: decodeURIComponent(brushHref().split('text=')[1]).length }
 })
 await t('地面ワイヤー（2026-11-03 本人「空中に浮いてる間は地面にもワイヤーつけて加速」「地面をちゃんとタップしなあかん感じに」）: 地面に立っている時は地面に掛からない／空中では掛かってすぐ速くなり（0.3秒で25m/s）、近く（4m）で外れる。地面の近くで外れても着地しても跳ね返らない／1ステップで最高速×dt より動かない（瞬間移動しない）／ワイヤーボタン（狙いなし）では空中でも地面に掛からない', () => {
   const DT = 1 / 60
@@ -501,6 +505,26 @@ await t('AI臭さチェック NG 0', () => {
 const browser = await chromium.launch({ ...MUTE_LAUNCH, args: [...MUTE_LAUNCH.args, ...GL] })
 const p = await open(browser)
 await t('起動時にエラーが出ない（後から読む窓の客まで全部読めている）', async () => { await p.waitForFunction(() => __bootDbg().cust, null, { timeout: 30000 }); const d = await p.evaluate(() => __bootDbg()); expect(p.errs.length === 0 && d.ch && !d.chFail, p.errs.join('|') + JSON.stringify(d)) })
+await t('文字だけのフォント: 画面に出る文字（日英・全部の画面）が、その書体の読み込みに全部入っている（足りないと一部の字だけ別の書体になる）', async () => {
+  const { usedChars, brushChars } = await import('./tools/fontlink.mjs')
+  const main = new Set(usedChars()), brush = new Set(brushChars()), miss = { main: new Set(), brush: new Set() }
+  for (const lang of ['ja', 'en']) {
+    const got = await p.evaluate(l => {
+      sky.setLang(l); const out = []
+      for (const el of document.querySelectorAll('body *')) {
+        if (/^(SCRIPT|STYLE|svg|path|g|rect|circle|ellipse|line|polyline|polygon|text|defs)$/i.test(el.tagName) && el.tagName !== 'text') continue
+        const fam = getComputedStyle(el).fontFamily
+        let txt = ''; for (const nd of el.childNodes) if (nd.nodeType === 3) txt += nd.textContent
+        const bf = getComputedStyle(el, '::before').content; if (bf && bf !== 'none' && bf !== 'normal') out.push([getComputedStyle(el, '::before').fontFamily, bf.replace(/^"|"$/g, '')])
+        if (txt.trim()) out.push([fam, txt])
+      }
+      return out
+    }, lang)
+    for (const [fam, txt] of got) for (const c of txt) { if (c.codePointAt(0) <= 32) continue; if (/Yuji/.test(fam.split(',')[0])) { if (!brush.has(c)) miss.brush.add(c) } else if (/Klee|BIZ/.test(fam.split(',')[0]) && !main.has(c)) miss.main.add(c) }
+  }
+  await p.evaluate(() => sky.setLang('ja'))
+  expect(!miss.main.size && !miss.brush.size, JSON.stringify({ main: [...miss.main].join(''), brush: [...miss.brush].join('') })); return true
+})
 await t('ロード画面（2026-11-03 本人「開いた最初に、いい感じのロード中の画面を」）: 開いた瞬間に世界観の絵と文字と進み具合が出て、読み込み（人物の GLB）が終わるまで消えない。終わったら消える', async () => {
   const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(ctx)
   let release; const gate = new Promise(r => { release = r })
