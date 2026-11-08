@@ -37,6 +37,15 @@ export const brushChars = () => sortU(ascii() + BRUSH_FIXED + keyText(BRUSH_KEYS
 // 看板の canvas（店の看板・届け先の札）は準備完了の前に描くので、その字も入れる（入れないと b を準備完了の前に取りに行く）
 const FIRST_KEYS = ['series', 'logo', 'masterName', 'masterLine', 'start', 'how', 'lang', 'more', 'muteOn', 'muteOff', 'loading', 'signNear', 'signFar', 'signWait']
 export const firstChars = () => sortU(ascii() + '宙吊軒らーめ%町中華' + keyText(FIRST_KEYS))
+// 届け先の札（Klee One の canvas）は品名・地区名・値段も描く。Klee One だけ、その字も最初の分に入れる
+export function kleeFirstChars() {
+  const d = readFileSync(ROOT + 'shared/delivery.js', 'utf8'), ds = d.slice(d.indexOf('export const DISHES'), d.indexOf(']', d.indexOf('export const DISHES')))
+  const dishes = [...ds.matchAll(/ja: '([^']*)'/g)].map(m => m[1]).join('')
+  if (!dishes) throw new Error('DISHES not found')
+  const src = readFileSync(ROOT + 'js/game.js', 'utf8'), zones = [...src.matchAll(/zone: \{([^}]*)\}/g)].map(m => m[1]).join('')
+  if (!zones) throw new Error('zone not found')
+  return sortU(firstChars() + dishes + zones.replace(/[\x00-\x7f]/g, '') + '円')
+}
 
 const FACES = [
   { family: 'Yuji Syuku', q: 'Yuji+Syuku', weight: 400, slug: 'yuji', chars: brushChars },
@@ -46,8 +55,9 @@ const FACES = [
 ]
 // 書体ごとの a（最初の画面）と b（それ以外）の文字
 export function plan() {
-  const first = new Set(firstChars()), out = []
+  const out = []
   for (const f of FACES) {
+    const first = new Set(f.slug === 'klee600' ? kleeFirstChars() : firstChars())
     // l = 半角英数（英語の画面と数字。日本語の見出しには出ないので筆の書体では取らずに済む）、a = 最初の画面の字、b = それ以外
     const all = [...f.chars()], asc = c => c.codePointAt(0) > 32 && c.codePointAt(0) < 127   // 空白は a 側（看板の「町中華 宙吊軒」の空白で筆の l を取りに行かない）
     const l = all.filter(asc).join(''), a = all.filter(c => !asc(c) && first.has(c)).join(''), b = all.filter(c => !asc(c) && !first.has(c)).join('')

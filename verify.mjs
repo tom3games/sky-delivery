@@ -540,7 +540,7 @@ await t('先読み（index.html の preload）: 最初の画面の素材を本�
   }
   expect(Object.values(out).every(o => o.pre >= 16 && !o.dups.length && !o.unused.length && !o.warn.length), JSON.stringify(out)); return { phone: out.phone.pre, pc: out.pc.pre }
 })
-await t('フォントの読み込み: 準備完了までに取るのは最初の画面の字（l と a）だけ（届け先の札の canvas が品名を描くので Klee One の b は前から取る）・残りは準備完了のあとで全部読み終わる', async () => {
+await t('フォントの読み込み: 準備完了までに取るのは最初の画面の字（l と a）だけ・残りは準備完了のあとで全部読み終わる', async () => {
   const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(ctx)
   const q = await ctx.newPage()
   await q.goto(URL0); await q.waitForFunction(() => window.__skyReady, null, { timeout: 30000 })
@@ -548,7 +548,7 @@ await t('フォントの読み込み: 準備完了までに取るのは最初の
   // 準備完了の印（performance.mark）より前に取り始めた woff2
   const atReady = await q.evaluate(() => { const t = performance.getEntriesByName('skyReady')[0].startTime; return performance.getEntriesByType('resource').filter(e => /fonts\/.*woff2/.test(e.name) && e.startTime < t).map(e => e.name.match(/fonts\/([a-z0-9]+-[lab])/)[1]) })
   await ctx.close()
-  expect(atReady.length && atReady.every(f => !/-b$/.test(f) || f === 'klee600-b'), JSON.stringify(atReady)); return { atReady: atReady.join(' ') }
+  expect(atReady.length && atReady.every(f => !/-b$/.test(f)), JSON.stringify(atReady)); return { atReady: atReady.join(' ') }
 })
 await t('ロード画面（2026-11-03 本人「開いた最初に、いい感じのロード中の画面を」）: 開いた瞬間に世界観の絵と文字と進み具合が出て、読み込み（人物の GLB）が終わるまで消えない。終わったら消える', async () => {
   const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(ctx)
