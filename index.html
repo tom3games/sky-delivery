@@ -22,6 +22,18 @@
 <link rel="stylesheet" href="style.css?v=17">
 <!-- 本体は tools/build.mjs で1つにまとめた dist/game.js（細かいファイル約40件を1件に） -->
 <link rel="modulepreload" href="dist/game.js?v=21">
+<script>
+// 最初の画面に要る素材（配達員の GLB・空・色の画像）を本体の実行を待たずに取り始める（遅い端末で本体の実行中に回線が空くのを埋める）
+// 画質の分け方は js/quality.js と同じ。読む側と同じ取り方（GLB は fetch、three の画像は crossorigin、ビルの壁は素の Image）にしないと2回取る
+(function(){
+  var low=(typeof matchMedia==='function'&&matchMedia('(pointer: coarse)').matches)||Math.min(screen.width,screen.height)<700, T='assets/'+(low?'tex512':'tex')+'/', h=document.head;
+  function pre(href,as,cors){var l=document.createElement('link');l.rel='preload';l.as=as;l.href=href;if(cors)l.crossOrigin='anonymous';h.appendChild(l)}
+  ['Ranger','Rig_Medium_General','Rig_Medium_MovementBasic'].forEach(function(n){pre('assets/chars/'+n+'.glb','fetch',1)});
+  pre('assets/hdri/'+(low?'sky_1k':'sky_2k')+'.webp','image',1);
+  ['concrete_wall_004','rock_face','asphalt_02','dirt','rocky_terrain_02','forest_leaves_02','japanese_cedar_bark'].forEach(function(n){pre(T+n+'_diff.webp','image',1)});
+  ['rectangular_facade_tiles','concrete_panels','red_brick_03','plastered_wall_04','corrugated_iron'].forEach(function(n){pre(T+n+'_diff.webp','image',0)});
+})();
+</script>
 </head>
 <body>
 <div id="view"></div>

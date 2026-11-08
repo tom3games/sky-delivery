@@ -525,6 +525,21 @@ await t('文字だけのフォント: 画面に出る文字（日英・全部の
   await p.evaluate(() => sky.setLang('ja'))
   expect(!miss.main.size && !miss.brush.size, JSON.stringify({ main: [...miss.main].join(''), brush: [...miss.brush].join('') })); return true
 })
+await t('先読み（index.html の preload）: 最初の画面の素材を本体の実行前に取り始める・同じ物を2回取らない・先読みして使わない物が無い（スマホとPC）', async () => {
+  const out = {}
+  for (const touch of [true, false]) {
+    const ctx = await browser.newContext({ locale: 'ja-JP', viewport: touch ? { width: 390, height: 844 } : { width: 1440, height: 900 }, hasTouch: touch, isMobile: touch }); await muteContext(ctx)
+    const q = await ctx.newPage(), n = {}, warn = []
+    q.on('request', r => { const u = r.url().replace(URL0, ''); if (/^assets\//.test(u) && !/colormap\.png/.test(u)) n[u] = (n[u] || 0) + 1 })   // colormap は窓の客の GLB が中で読む共有の画像（後から読む・前から同じ）
+    q.on('console', m => { if (/preload/i.test(m.text())) warn.push(m.text().slice(0, 120)) })
+    await q.goto(URL0); await q.waitForFunction(() => window.__skyReady, null, { timeout: 30000 })
+    const pre = await q.evaluate(() => [...document.querySelectorAll('link[rel=preload]')].map(l => l.getAttribute('href')))
+    await q.waitForTimeout(3500); await ctx.close()
+    const dups = Object.entries(n).filter(([, v]) => v > 1), unused = pre.filter(u => !n[u])
+    out[touch ? 'phone' : 'pc'] = { pre: pre.length, dups, unused, warn }
+  }
+  expect(Object.values(out).every(o => o.pre >= 16 && !o.dups.length && !o.unused.length && !o.warn.length), JSON.stringify(out)); return { phone: out.phone.pre, pc: out.pc.pre }
+})
 await t('ロード画面（2026-11-03 本人「開いた最初に、いい感じのロード中の画面を」）: 開いた瞬間に世界観の絵と文字と進み具合が出て、読み込み（人物の GLB）が終わるまで消えない。終わったら消える', async () => {
   const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 } }); await muteContext(ctx)
   let release; const gate = new Promise(r => { release = r })
