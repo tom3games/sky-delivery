@@ -892,6 +892,42 @@ await t('WebKit: 店の周りの町の画面: 開始地点でタップして、�
   expect(r.vend.low && near(r.vend.hook, 42, 849, 0.5) && r.house.rope && !r.house.low && near(r.house.hook, r.want.house[0], r.want.house[1], 1.5) && near(r.post.hook, r.want.post[0], r.want.post[1], 0.5) && r.startCalls > 0 && r.startCalls <= 175, JSON.stringify(r)); return r
 })
 await t('WebKit: エラーなし', async () => { expect(wp.errs.length === 0, wp.errs.join('|')) })
+// ページを離れた時に音を止める（2026-11-11 練り消し: 横丁に戻っても iPhone で BGM が鳴り続けた）。音は鳴らさない（mute.mjs）
+{
+  const awb = await webkit.launch(), ap = await open(awb, { isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
+  await t('WebKit: 裏に回ると BGM と環境音が止まり suspend。戻っても触るまで鳴らない（bfcache の pageshow でも）', async () => {
+    await ap.evaluate(() => { Snd.init(); 0; Snd.loop('awayTest', Object.values(Snd.files).flat()[0], 0.2) })
+    await ap.waitForFunction(() => Snd.playing().length >= 1, null, { timeout: 15000 })
+    const r = await ap.evaluate(async () => {
+      const c = Snd.ctx; let sus = 0; const os = c.suspend.bind(c); c.suspend = () => { sus++; return os() }
+      const before = Snd.playing().length
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); document.dispatchEvent(new Event('visibilitychange'))
+      const hid = { away: Snd.away, playing: Snd.playing().length, sus, gain: Snd.master.gain.value }
+      const name = Object.keys(Snd.files)[0], src = Snd.play(name); Snd.loop('awayTest2', Object.values(Snd.files).flat()[0], 0.2)   // 裏にいる間の音は鳴らさない
+      await new Promise(r => setTimeout(r, 400)); const quiet = { playing: Snd.playing().length, src: src === null }
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); document.dispatchEvent(new Event('visibilitychange'))
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+      await new Promise(r => setTimeout(r, 400)); const back = { away: Snd.away, playing: Snd.playing().length, gain: Snd.master.gain.value }
+      Snd.loop('awayTest2', null)
+      return { before, hid, quiet, back }
+    })
+    await ap.touchscreen.tap(12, 300); await ap.waitForTimeout(800)
+    const after = await ap.evaluate(() => ({ away: Snd.away, playing: Snd.playing().length, wake: Snd.life.wake, mute: window.__muteOk() }))
+    const pe = ap.errs.filter(e => e.startsWith('pageerror'))
+    expect(r.before >= 1 && r.hid.away && r.hid.playing === 0 && r.hid.sus === 1 && r.hid.gain === 0 && r.quiet.playing === 0 && r.quiet.src && r.back.away && r.back.playing === 0 && r.back.gain === 0 && !after.away && after.playing >= r.before && after.wake === 1 && after.mute && !pe.length, JSON.stringify({ r, after, pe }))
+    return { before: r.before, after: after.playing }
+  })
+  await t('WebKit: 別のページへ移る（pagehide）と止まり、戻るで戻っても鳴っていない', async () => {
+    await ap.evaluate(() => addEventListener('pagehide', () => { try { sessionStorage.setItem('awayHide', JSON.stringify({ away: Snd.away, playing: Snd.playing().length, hide: Snd.life.hide })) } catch (e) {} }))
+    await ap.goto(URL0 + 'privacy.html'); await ap.waitForTimeout(300)
+    const hid = await ap.evaluate(() => sessionStorage.getItem('awayHide'))
+    await ap.goBack(); await ap.waitForFunction(() => typeof Snd === 'object' && document.readyState === 'complete', null, { timeout: 30000 }); await ap.waitForTimeout(800)
+    const back = await ap.evaluate(() => ({ playing: Snd.playing().length, ctx: !!Snd.ctx, away: Snd.away, mute: window.__muteOk() }))
+    const h = JSON.parse(hid || '{}')
+    expect(h.away && h.playing === 0 && back.playing === 0 && back.mute, JSON.stringify({ h, back })); return { h, back }
+  })
+  await awb.close()
+}
 await wb.close()
 server.kill()
 await t('向き: カメラを0〜720°以上回しても、地上・空中・ワイヤー中でスティックの上下左右＝画面の上下左右（84通り。2026-11-02 しっぽ取りで見つかった不具合）', () => {
